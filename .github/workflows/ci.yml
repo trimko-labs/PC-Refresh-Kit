@@ -1,0 +1,36 @@
+# .github/workflows/ci.yml
+name: CI
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Parse AST (syntaxe des scripts)
+        shell: powershell
+        run: .\tests\Test-KitParse.ps1 -CI
+
+      - name: Encodage (BOM UTF-8 + zero em-dash)
+        shell: powershell
+        run: .\tests\Test-KitEncoding.ps1 -CI
+
+      - name: Pester
+        shell: powershell
+        run: |
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module Pester -MinimumVersion 5.5.0 -Force -SkipPublisherCheck -Scope CurrentUser
+          Import-Module Pester -MinimumVersion 5.5.0
+          $cfg = New-PesterConfiguration
+          $cfg.Run.Path = 'tests'
+          $cfg.Run.Exit = $true
+          $cfg.Output.Verbosity = 'Detailed'
+          Invoke-Pester -Configuration $cfg
+
+      - name: Smoke-tests (modules en -WhatIf)
+        shell: powershell
+        run: .\tests\Invoke-SmokeTest.ps1 -CI

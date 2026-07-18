@@ -1,0 +1,20 @@
+﻿{
+  "_comment": "Liste noire v1.6. SEULS les autostarts matchant 'match' (sur Name ou Command) sont désactivés (réversible via 14-Undo). Tout le reste est laissé actif. N'ajouter que des tokens SPÉCIFIQUES (noms d'exe d'updaters/helpers connus), jamais de mot générique qui matcherait un chemin légitime.",
+  "entries": [
+    { "match": "AdobeAAMUpdater",      "label": "Adobe Updater" },
+    { "match": "Adobe Updater",        "label": "Adobe Updater" },
+    { "match": "AdobeARM",             "label": "Adobe Reader/Acrobat Updater" },
+    { "match": "Reader_sl",            "label": "Adobe Reader Speed Launcher" },
+    { "match": "Spotify",              "label": "Spotify" },
+    { "match": "iTunesHelper",         "label": "iTunes Helper" },
+    { "match": "qttask",               "label": "QuickTime Task (obsolète)" },
+    { "match": "jusched",              "label": "Java Update Scheduler" },
+    { "match": "SunJavaUpdateSched",   "label": "Java Update Scheduler" },
+    { "match": "Skype",                "label": "Skype autostart" },
+    { "match": "CCleaner",             "label": "CCleaner autostart" },
+    { "match": "Steam",                "label": "Steam autostart (optionnel)" },
+    { "match": "EpicGamesLauncher",    "label": "Epic Games Launcher" },
+    { "match": "GoogleDriveFS",        "label": "Google Drive autostart" },
+    { "match": "OneDrive",             "label": "OneDrive autostart" }
+  ]
+}

@@ -1,0 +1,7 @@
+﻿{
+  "_comment": "v1.6. knownGoodSearch = domaines de moteurs légitimes (ne pas réinitialiser). extensionBlacklist = IDs d'extensions connues malveillantes à retirer. extensionWhitelist = IDs d'extensions légitimes connues (force-installées par un logiciel de sécurité légitime). Le reste est rapporté avec un lien de vérification.",
+  "_comment_whitelist": "IDs vérifiés sur le Chrome Web Store. Kaspersky Protection : amkpcpdhpmccmbnbjgncffgjallfkib. Ajouter ici tout ID légitime rencontré en clientèle.",
+  "knownGoodSearch": ["google.com","bing.com","duckduckgo.com","qwant.com","ecosia.org","yahoo.com","startpage.com"],
+  "extensionBlacklist": [],
+  "extensionWhitelist": ["amkpcpdhpmccmbnbjgncffgjallfkib"]
+}

@@ -1,0 +1,49 @@
+{
+  "_comment": "Fiche bloatware ASUS - extraite de cleanup-asus-v2.ps1 et cleanup-asus-noreboot.ps1",
+  "_source": "C:\\tmp\\cleanup-asus-v2.ps1, C:\\tmp\\cleanup-asus-noreboot.ps1",
+
+  "keep": [
+    {
+      "name": "ASUS System Control Interface v3",
+      "reason": "Requis par G-Helper (remplacement leger d'Armoury Crate)"
+    },
+    {
+      "name": "ASUS Precision Touchpad",
+      "reason": "Pilote touchpad - desinstaller rend le touchpad inutilisable"
+    }
+  ],
+
+  "nativeUninstaller": {
+    "path": "C:\\Program Files\\ASUS\\Armoury Crate Service\\ArmouryCrate.Uninstaller.exe",
+    "args": "-silent",
+    "description": "Armoury Crate Service - uninstaller officiel ASUS"
+  },
+
+  "msiGuids": [
+    { "name": "AURA Service",             "guid": "{56EEEF7D-0AE3-401A-898B-581719D005AE}" },
+    { "name": "ROG Live Service",          "guid": "{2D87BFB6-C184-4A59-9BBE-3E20CE797631}" },
+    { "name": "ASUS Update Helper",        "guid": "{A92DAB39-4E2C-4304-9AB6-BC44E68B55E2}" },
+    { "name": "ASUS Hotplug Controller",   "guid": "{167A9DAC-ED7E-42CC-9A58-9E7A0C24B91F}" },
+    { "name": "ASUS Monitor Control",      "guid": "{EAA11E50-08F8-4014-AA24-166AC5FD2DCE}" },
+    { "name": "ASUS HID Control Service",  "guid": "{0F2EECD1-9CCE-4907-8D9A-11629B0608CE}" },
+    { "name": "ASUS Aura SDK",             "guid": "{CF8E6E00-9C03-4440-81C0-21FACB921A6B}" },
+    { "name": "ASUS Aac_NBDT HAL MSI",     "guid": "{01D3B7AA-D078-4506-B460-60877FCDDBD6}" }
+  ],
+
+  "orphanServices": [
+    "ArmouryCrateControlInterface",
+    "ArmouryCrateService",
+    "asus",
+    "asusm",
+    "AsusAppService",
+    "AsusCertService",
+    "ASUSOptimization",
+    "AsusPTPService",
+    "ASUSSoftwareManager",
+    "ASUSSwitch",
+    "ASUSSystemAnalysis",
+    "ASUSSystemDiagnosis",
+    "GameSDK Service",
+    "ROG Live Service"
+  ]
+}

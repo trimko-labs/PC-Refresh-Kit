@@ -1,0 +1,17 @@
+﻿{
+  "Debloat": "Standard",
+  "KeepAdmin": false,
+  "Recycle": false,
+  "WinOld": false,
+  "Cache": false,
+  "OneDrive": false,
+  "Oem": false,
+  "NetReset": false,
+  "BackupData": true,
+  "ScanDefender": true,
+  "Modules": {
+    "00": true, "01": true, "02": true, "03": true, "04": true,
+    "05": true, "06": true, "07": true, "08": true, "09": true,
+    "11": true, "12": true, "13": true, "15": false, "10": true
+  }
+}

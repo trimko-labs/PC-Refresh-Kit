@@ -1,0 +1,71 @@
+﻿# tests/Test-KitEncoding.ps1 - Vérifie l'encodage des .ps1 du kit :
+# BOM UTF-8 présent, aucun em-dash (U+2014) ni en-dash (U+2013).
+# Fonction pure Test-KitEncoding + wrapper de scan réutilisable en local et CI.
+# Encodage : UTF-8 avec BOM.
+[CmdletBinding()]
+param([switch]$CI)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+# ---------------------------------------------------------------------------
+# Test-KitEncoding : valide un contenu de fichier. PURE/testable.
+# ---------------------------------------------------------------------------
+function Test-KitEncoding {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Content,
+        [Parameter(Mandatory)][bool]$HasBom,
+        [bool]$EndsWithNewline = $true
+    )
+    $forbidden = @()
+    if ($Content.Contains([char]0x2014)) { $forbidden += 'U+2014 (em-dash)' }
+    if ($Content.Contains([char]0x2013)) { $forbidden += 'U+2013 (en-dash)' }
+    return [PSCustomObject]@{
+        HasBom          = $HasBom
+        EndsWithNewline = $EndsWithNewline
+        ForbiddenChars  = $forbidden
+        Ok              = ($HasBom -and $EndsWithNewline -and $forbidden.Count -eq 0)
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Test-FileBom : $true si le fichier commence par le BOM UTF-8 (EF BB BF).
+# ---------------------------------------------------------------------------
+function Test-FileBom {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Path)
+    $bytes = [System.IO.File]::ReadAllBytes($Path)
+    return ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF)
+}
+
+# Wrapper de scan : tous les .ps1 hors vendor/. Retourne le nombre de violations.
+function Invoke-EncodingScan {
+    [CmdletBinding()]
+    param()
+    $root  = Split-Path $PSScriptRoot -Parent
+    $files = @(Get-ChildItem -Path $root -Recurse -Filter '*.ps1' -File |
+               Where-Object { $_.FullName -notmatch '\\vendor\\' -and $_.FullName -notmatch '\\\.git\\' })
+    $violations = 0
+    foreach ($f in $files) {
+        $hasBom  = Test-FileBom -Path $f.FullName
+        $content = [System.IO.File]::ReadAllText($f.FullName)
+        $endsNl  = ($content.Length -eq 0) -or $content.EndsWith("`n")
+        $r = Test-KitEncoding -Content $content -HasBom $hasBom -EndsWithNewline $endsNl
+        if (-not $r.Ok) {
+            $why = @()
+            if (-not $r.HasBom) { $why += 'BOM manquant' }
+            if (-not $r.EndsWithNewline) { $why += 'newline finale manquante' }
+            if ($r.ForbiddenChars.Count -gt 0) { $why += ($r.ForbiddenChars -join ', ') }
+            Write-Host "[ENCODING] FAIL $($f.FullName.Substring($root.Length + 1)) : $($why -join ' ; ')" -ForegroundColor Red
+            $violations++
+        }
+    }
+    Write-Host "[ENCODING] $($files.Count) fichier(s) scannés, $violations violation(s)" -ForegroundColor $(if ($violations -eq 0) { 'Green' } else { 'Red' })
+    return $violations
+}
+
+if ($MyInvocation.InvocationName -ne '.') {
+    $v = Invoke-EncodingScan
+    if ($CI) { exit ([math]::Min($v, 255)) }
+}
