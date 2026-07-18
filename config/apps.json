@@ -1,0 +1,9 @@
+[
+  { "name": "Mozilla Firefox",   "wingetId": "Mozilla.Firefox",                    "optional": false },
+  { "name": "7-Zip",             "wingetId": "7zip.7zip",                           "optional": false },
+  { "name": "VLC",               "wingetId": "VideoLAN.VLC",                        "optional": false },
+  { "name": "Sumatra PDF",       "wingetId": "SumatraPDF.SumatraPDF",               "optional": false },
+  { "name": "LibreOffice",       "wingetId": "TheDocumentFoundation.LibreOffice",   "optional": false },
+  { "name": "Brave Browser",     "wingetId": "Brave.Brave",                         "optional": true  },
+  { "name": "Google Chrome",     "wingetId": "Google.Chrome",                       "optional": true  }
+]

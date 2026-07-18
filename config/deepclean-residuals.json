@@ -1,0 +1,16 @@
+{
+  "_comment": "Liste blanche v1.4. SEULS ces chemins peuvent être supprimés par 11-DeepClean. alwaysCheck = vérifié à chaque passage. byRemovedApp = nettoyé seulement si l'app correspondante apparaît dans le log Debloat comme désinstallée.",
+  "alwaysCheck": [],
+  "byRemovedApp": [
+    {
+      "match": "McAfee",
+      "label": "Résidus McAfee",
+      "paths": ["%ProgramData%\\McAfee", "%ProgramFiles%\\McAfee", "%ProgramFiles(x86)%\\McAfee"]
+    },
+    {
+      "match": "Norton",
+      "label": "Résidus Norton",
+      "paths": ["%ProgramData%\\Norton", "%ProgramData%\\NortonInstaller"]
+    }
+  ]
+}

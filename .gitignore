@@ -1,0 +1,10 @@
+runtime/
+logs/
+*.log
+*.tmp
+backups/
+tests/TestResults/
+dist/
+.superpowers/
+.claude/
+docs/plans/

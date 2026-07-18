@@ -1,0 +1,9 @@
+﻿{
+  "wuSearchTimeoutMinutes": 10,
+  "wuInstallTimeoutMinutes": 60,
+  "cleanmgrTimeoutMinutes": 30,
+  "downloadTimeoutSeconds": 60,
+  "diskWarnFreePct": 15,
+  "diskErrorFreePct": 5,
+  "restorePointMaxAgeHours": 4
+}
