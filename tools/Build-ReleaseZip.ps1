@@ -33,9 +33,11 @@ foreach ($sub in @("runtime","runtime\logs","runtime\undo","runtime\smoke")) {
 # Purge defensive de tout residu dev dans le staging
 Get-ChildItem $staging -Recurse -Include "*.Tests.ps1","test-results.xml" -Force |
     Remove-Item -Force -ErrorAction SilentlyContinue
-# docs/plans = notes de conception internes, hors distribution
-$plansDir = Join-Path $staging "docs\plans"
-if (Test-Path $plansDir) { Remove-Item $plansDir -Recurse -Force }
+# docs/plans et docs/superpowers = notes de conception internes, hors distribution
+foreach ($internal in @("docs\plans", "docs\superpowers")) {
+    $dir = Join-Path $staging $internal
+    if (Test-Path $dir) { Remove-Item $dir -Recurse -Force }
+}
 
 if (-not (Test-Path $OutDir)) { New-Item -ItemType Directory -Path $OutDir -Force | Out-Null }
 $zip = Join-Path $OutDir "PC-Refresh-Kit-v$Version.zip"
