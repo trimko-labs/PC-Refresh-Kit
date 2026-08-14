@@ -1,4 +1,4 @@
-# tests/Test-KitAnonymity.ps1 - garde-fou d'anonymat du depot public.
+﻿# tests/Test-KitAnonymity.ps1 - garde-fou d'anonymat du depot public.
 #
 # Le depot est publie sous l'identite Trimko, sans nom de personne physique.
 # Un fichier de travail aspire par un "git add -A" (notes de conception, log,
