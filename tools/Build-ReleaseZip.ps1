@@ -1,7 +1,7 @@
 ﻿# Produit un zip propre du kit pour distribution (exclut le dev).
 [CmdletBinding()]
 param(
-    [string]$Version = "2.0.0",
+    [string]$Version = "2.1.0",
     [string]$OutDir  = ""
 )
 $ErrorActionPreference = "Stop"
@@ -12,8 +12,10 @@ $staging = Join-Path $env:TEMP "prk-stage-$Version"
 if (Test-Path $staging) { Remove-Item $staging -Recurse -Force }
 New-Item -ItemType Directory -Path $staging -Force | Out-Null
 
+# vendor/ est indispensable : le module 04-Privacy echoue si vendor\TelemetryGuard est absent.
+# docs/ accompagne l'operateur sur le terrain (procedure + notes de version).
 $include = @(
-    "modules","lib","config","tools","templates",
+    "modules","lib","config","tools","templates","vendor","docs",
     "Run.ps1","Run-GUI.ps1","README.md","LICENSE","TOOLTIPS.md"
 ) + (Get-ChildItem $root -Filter "Lancer*.bat").Name
 
@@ -31,6 +33,9 @@ foreach ($sub in @("runtime","runtime\logs","runtime\undo","runtime\smoke")) {
 # Purge defensive de tout residu dev dans le staging
 Get-ChildItem $staging -Recurse -Include "*.Tests.ps1","test-results.xml" -Force |
     Remove-Item -Force -ErrorAction SilentlyContinue
+# docs/plans = notes de conception internes, hors distribution
+$plansDir = Join-Path $staging "docs\plans"
+if (Test-Path $plansDir) { Remove-Item $plansDir -Recurse -Force }
 
 if (-not (Test-Path $OutDir)) { New-Item -ItemType Directory -Path $OutDir -Force | Out-Null }
 $zip = Join-Path $OutDir "PC-Refresh-Kit-v$Version.zip"

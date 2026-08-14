@@ -17,8 +17,10 @@ Site du projet : https://kit.trimko.com
 
 ## Captures
 
-<!-- Déposer la capture GUI dans docs/img/gui-cockpit.png (action PR-4) -->
 ![Cockpit GUI](docs/img/gui-cockpit.png)
+
+Le cockpit en mode dry-run : modules a cocher, profils d'intervention, actions sensibles
+decochees par defaut, journal colore a droite.
 
 ## Prerequis
 
@@ -50,6 +52,13 @@ powershell -ExecutionPolicy Bypass -File .\Run.ps1
 Le menu interactif s'affiche. Taper `A` pour tout executer, ou le numero d'un module specifique.
 
 ### Apercu sans rien modifier (WhatIf)
+
+Double-cliquer sur `Lancer-Demo.bat` : le cockpit s'ouvre avec le mode dry-run deja active.
+Tous les modules sont simules et le journal defile normalement, mais aucune modification n'est
+appliquee. C'est le point d'entree a utiliser pour une demonstration sur une machine qu'on ne
+veut pas toucher.
+
+En ligne de commande :
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\Run.ps1 -WhatIf

@@ -192,7 +192,7 @@ function ConvertTo-HtmlEncoded {
 # Get-KitVersion : version courante du kit, source unique. Utilisée dans le
 # rapport (module 10). Centralise ce qui était codé en dur.
 # ---------------------------------------------------------------------------
-function Get-KitVersion { return 'v2.0' }
+function Get-KitVersion { return 'v2.1' }
 
 # ---------------------------------------------------------------------------
 # Get-MetaFromDiag : extrait du diagnostic JSON les métadonnées machine

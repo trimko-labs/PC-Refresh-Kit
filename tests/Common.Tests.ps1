@@ -1560,7 +1560,7 @@ Describe 'Test-InKeepList' {
 # ---------------------------------------------------------------------------
 Describe 'Get-KitVersion' {
     It 'retourne la version courante du kit' {
-        Get-KitVersion | Should -Be 'v2.0'
+        Get-KitVersion | Should -Be 'v2.1'
     }
 }
 
