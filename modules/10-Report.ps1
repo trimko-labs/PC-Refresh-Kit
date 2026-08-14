@@ -287,8 +287,10 @@ else {
     }
 
     if ($ficheContent) {
+        # Le mot de passe n'est JAMAIS recopie ici : il ne doit exister que dans
+        # la fiche PC, seul fichier que l'operateur supprime avant de rendre la cle.
         $sb.AppendLine("--- FICHE PC ---") | Out-Null
-        $sb.AppendLine($ficheContent) | Out-Null
+        $sb.AppendLine((Remove-PasswordLines -Text $ficheContent)) | Out-Null
         $sb.AppendLine("") | Out-Null
     }
 

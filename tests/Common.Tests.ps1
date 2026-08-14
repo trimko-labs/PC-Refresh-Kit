@@ -1565,6 +1565,40 @@ Describe 'Get-KitVersion' {
 }
 
 # ---------------------------------------------------------------------------
+Describe 'Remove-PasswordLines' {
+    It 'retire le mot de passe de la fiche PC recopiee dans le rapport' {
+        $fiche = @"
+=== FICHE PC - POSTE01 ===
+COMPTE ADMIN LOCAL CREE PAR PC-REFRESH-KIT
+  Nom du compte : Admin-Local
+  Mot de passe  : Chien-Brume-Pomme-86
+IMPORTANT : noter ce mot de passe en lieu sur.
+"@
+        $out = Remove-PasswordLines -Text $fiche
+        $out | Should -Not -Match 'Chien-Brume-Pomme-86'
+        $out | Should -Match 'Nom du compte : Admin-Local'
+        $out | Should -Match 'voir la fiche PC'
+    }
+
+    It 'traite aussi passphrase, password et mdp, quelle que soit la casse' {
+        foreach ($libelle in @('Passphrase', 'PASSWORD', 'mdp')) {
+            $texte = "  $libelle : SecretAbc123"
+            (Remove-PasswordLines -Text $texte) | Should -Not -Match 'SecretAbc123'
+        }
+    }
+
+    It 'ne touche pas aux lignes qui parlent du mot de passe sans en porter un' {
+        $texte = 'Communiquer le mot de passe admin au proprietaire'
+        Remove-PasswordLines -Text $texte | Should -Be $texte
+    }
+
+    It 'renvoie une chaine vide ou nulle telle quelle' {
+        Remove-PasswordLines -Text ''   | Should -Be ''
+        Remove-PasswordLines -Text $null | Should -BeNullOrEmpty
+    }
+}
+
+# ---------------------------------------------------------------------------
 Describe 'Get-MetaFromDiag' {
     It 'extrait machine/cpu/ram depuis un diag JSON' {
         $diag = [PSCustomObject]@{

@@ -195,6 +195,30 @@ function ConvertTo-HtmlEncoded {
 function Get-KitVersion { return 'v2.1' }
 
 # ---------------------------------------------------------------------------
+# Remove-PasswordLines : retire d'un bloc de texte toute ligne portant un mot
+# de passe, en conservant le reste tel quel.
+# Le rapport TXT recopiait la fiche PC integralement (module 10) : le mot de
+# passe administrateur survivait donc a la suppression de la fiche et repartait
+# sur la cle USB de l'operateur, alors que le bouton "Supprimer la fiche PC"
+# et la checklist de fin laissaient croire le contraire. Le rapport renvoie
+# desormais a la fiche au lieu de recopier le secret.
+# ---------------------------------------------------------------------------
+function Remove-PasswordLines {
+    [CmdletBinding()]
+    param([AllowNull()][string]$Text)
+
+    if ([string]::IsNullOrEmpty($Text)) { return $Text }
+
+    $pattern     = '(?i)^\s*(mot de passe|passphrase|password|mdp)\s*[:=]'
+    $replacement = '  Mot de passe  : [non repris dans le rapport - voir la fiche PC]'
+    $lines       = $Text -split "`r?`n"
+    $out         = foreach ($line in $lines) {
+        if ($line -match $pattern) { $replacement } else { $line }
+    }
+    return (($out) -join [Environment]::NewLine)
+}
+
+# ---------------------------------------------------------------------------
 # Get-MetaFromDiag : extrait du diagnostic JSON les métadonnées machine
 # partagées par le rapport TXT et le rapport HTML (auparavant dupliquées dans
 # le module 10, source d'un bug silencieux). Tolérant au null et aux diag
