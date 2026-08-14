@@ -19,6 +19,10 @@ jobs:
         shell: powershell
         run: .\tests\Test-KitEncoding.ps1 -CI
 
+      - name: Anonymat (aucun chemin ni contact personnel publie)
+        shell: powershell
+        run: .\tests\Test-KitAnonymity.ps1 -CI
+
       - name: Pester
         shell: powershell
         run: |
