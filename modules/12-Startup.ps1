@@ -1,5 +1,5 @@
 ﻿# modules/12-Startup.ps1 - Désactive (réversible) les autostarts indésirables (liste noire)
-# Usage : powershell -ExecutionPolicy Bypass -File .\modules\12-Startup.ps1 [-WhatIf] [-Unattended]
+# Usage : powershell -ExecutionPolicy Bypass -File .\modules\12-Startup.ps1 [-WhatIf] [-Unattended] [-KeepPatterns "Steam,Discord"]
 <#
 .SYNOPSIS
     Désactive de façon RÉVERSIBLE les programmes au démarrage matchant la liste noire :
@@ -7,13 +7,17 @@
     - dossier Démarrage : .lnk DÉPLACÉS vers un dossier de sauvegarde, jamais supprimés
     - tâches planifiées logon/boot : Disable-ScheduledTask, jamais Unregister
     Rien hors liste noire n'est touché. NE supprime jamais de façon irréversible.
+    -KeepPatterns : motifs séparés par des virgules que le profil d'intervention
+    préserve ; les entrées de liste noire correspondantes sont écartées avant tout
+    traitement (le profil gamer garde ainsi ses lanceurs de jeux au démarrage).
 #>
 
 param(
     [switch]$WhatIf,
     [string]$Profile = 'Standard',
     [switch]$Force,
-    [switch]$Unattended
+    [switch]$Unattended,
+    [string]$KeepPatterns = ''
 )
 
 Set-StrictMode -Version Latest
@@ -29,6 +33,13 @@ $blacklist = @()
 if (Test-Path $blPath) {
     try { $blacklist = @((Get-Content $blPath -Raw -Encoding UTF8 | ConvertFrom-Json).entries) }
     catch { Write-KitLog -Message "Liste noire illisible : $_. Module ignoré." -Level 'WARN' }
+}
+if (-not [string]::IsNullOrWhiteSpace($KeepPatterns)) {
+    $motifs  = @($KeepPatterns -split ',' | ForEach-Object { $_.Trim() })
+    $avant   = @($blacklist).Count
+    $blacklist = @(Remove-KeptEntries -Blacklist $blacklist -KeepPatterns $motifs)
+    $preserves = $avant - @($blacklist).Count
+    Write-KitLog -Message "Profil : $preserves entrée(s) de la liste noire préservée(s) ($($motifs -join ', '))." -Level 'INFO'
 }
 if ($blacklist.Count -eq 0) {
     Write-KitLog -Message "Liste noire vide/introuvable. Rien à faire." -Level 'WARN'

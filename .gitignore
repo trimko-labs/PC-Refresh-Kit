@@ -4,6 +4,7 @@ logs/
 *.tmp
 backups/
 tests/TestResults/
+tests/anonymity-names.local.txt
 dist/
 .superpowers/
 .claude/

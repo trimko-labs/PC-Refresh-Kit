@@ -17,10 +17,29 @@ Site du projet : https://kit.trimko.com
 
 ## Captures
 
-![Cockpit GUI](docs/img/gui-cockpit.png)
+![Préparation](docs/img/gui-prepare.png)
 
-Le cockpit en mode dry-run : modules a cocher, profils d'intervention, actions sensibles
-decochees par defaut, journal colore a droite.
+Préparer : profil d'intervention, modules, réglages et actions sensibles, aide intégrée. La barre
+d'action résume ce qui sera fait.
+
+![Exécution](docs/img/gui-run.png)
+
+Exécuter : chaque module affiche son état et sa durée sur la timeline, le journal défile,
+la barre porte la progression.
+
+![Clôture](docs/img/gui-close.png)
+
+Clôturer : passphrase masquée à remettre au propriétaire, checklist avant restitution, rapport.
+
+## Aide intégrée
+
+Le cockpit affiche deux onglets à droite : **Aide** et **Journal** ; un troisième, **Clôture**,
+apparaît en fin de run. Survoler un module ou une option affiche dans l'onglet Aide ce qu'elle
+fait, ce qui est protégé, si l'action est réversible, combien de temps elle prend et dans quel cas
+la décocher. L'infobulle donne le résumé, l'onglet donne le détail.
+
+Le contenu vit dans `config/help.fr.json`, seule source de vérité. Un contrôle ajouté à
+l'interface sans entrée correspondante fait échouer la CI (`tests/Help.Tests.ps1`).
 
 ## Prerequis
 
@@ -34,9 +53,11 @@ decochees par defaut, journal colore a droite.
 
 ### Interface graphique (recommande)
 
-Double-cliquer sur `Lancer.bat` : la fenetre demande l'elevation administrateur (UAC), puis ouvre
-le cockpit. Cocher les modules et les actions souhaitees, puis cliquer LANCER. Le deroule s'affiche
-en direct ; le mot de passe administrateur apparait en fin de traitement avec un bouton Copier.
+Double-cliquer sur `Lancer.bat` : la fenêtre demande l'élévation administrateur (UAC), puis ouvre
+le cockpit. Cocher les modules et les actions souhaitées, puis cliquer LANCER dans la barre d'action
+en bas de la fenêtre. Le déroulé s'affiche en direct ; en fin de run, l'onglet Clôture présente la
+passphrase administrateur masquée (boutons Afficher et Copier), la checklist de restitution et le
+rapport.
 
 En secours (si la GUI ne s'ouvre pas sur une machine), `Lancer-Console.bat` ouvre le menu texte.
 
@@ -63,6 +84,19 @@ En ligne de commande :
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\Run.ps1 -WhatIf
 ```
+
+### Aperçu de l'interface sans droits administrateur
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Run-GUI.ps1 -UiPreview
+powershell -ExecutionPolicy Bypass -File .\Run-GUI.ps1 -UiPreview -PreviewPhase Running
+powershell -ExecutionPolicy Bypass -File .\Run-GUI.ps1 -UiPreview -PreviewPhase Done
+```
+
+Ouvre le cockpit sans élévation, LANCER désactivé, avec des données de démonstration pour
+chaque phase. Sert aux contributeurs et aux captures d'écran : aucune action n'est exécutée et rien
+n'est modifié sur la machine ; le kit crée seulement son dossier de journaux `runtime\logs` sous son
+propre répertoire.
 
 ## Modules
 

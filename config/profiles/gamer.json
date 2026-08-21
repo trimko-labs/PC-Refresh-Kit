@@ -1,6 +1,8 @@
-﻿{
-  "Debloat": "Standard",
-  "KeepAdmin": false,
+{
+  "Description": "Machine de jeu : lanceurs conservés au démarrage, compte administrateur gardé, débloatage prudent.",
+  "StartupKeep": ["Steam", "EpicGamesLauncher", "Discord", "GeForce", "Battle.net"],
+  "Debloat": "Conservative",
+  "KeepAdmin": true,
   "Recycle": false,
   "WinOld": false,
   "Cache": false,

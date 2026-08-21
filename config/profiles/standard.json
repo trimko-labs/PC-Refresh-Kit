@@ -1,4 +1,6 @@
-﻿{
+{
+  "Description": "Remise en état complète et équilibrée. Profil à utiliser par défaut.",
+  "StartupKeep": [],
   "Debloat": "Standard",
   "KeepAdmin": false,
   "Recycle": false,

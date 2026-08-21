@@ -22,9 +22,19 @@ Regle d'or : **lancer le kit depuis la session du proprietaire du PC** (son comp
 - [ ] Connexion internet active (modules 05 Updates et 06 Software).
 - [ ] Disque externe branche si backup data voulu. Le module 01 copie Documents, Desktop, Pictures, Downloads (+ Videos, Music si presents) vers `PCRefresh-Backup-<PC>-<date>` sur le disque externe. **Ce qui n'est PAS copie** : AppData (mails Thunderbird/Outlook locaux, mots de passe et favoris navigateur, donnees d'applis), les autres disques (D:), les autres profils. Si le proprietaire a des mails en local ou des donnees ailleurs, les sauver a la main avant. Sans disque externe : seul le point de restauration systeme est cree (les fichiers perso ne sont pas copies, mais rien n'est supprime non plus).
 
+## Le cockpit en trois temps
+
+L'interface suit le geste de l'intervention et se lit toujours de la même façon :
+
+- **Préparer** : profil d'intervention et modules à gauche, réglages au centre, actions sensibles à droite. Survoler un élément affiche son explication dans l'onglet **Aide**. La barre d'action en bas résume ce qui sera fait et porte le bouton LANCER L'INTERVENTION.
+- **Exécuter** : la colonne de gauche devient le déroulé (chaque module affiche son état et sa durée), l'onglet **Journal** défile, la barre du bas affiche la progression et le bouton Annuler.
+- **Clôturer** : un onglet **Clôture** apparaît avec la passphrase administrateur masquée (boutons Afficher et Copier), la checklist « Avant de rendre le PC » et l'accès au rapport.
+
+Le bandeau du haut indique en permanence le mode : SIMULATION, INTERVENTION RÉELLE ou APERÇU.
+
 ## Etape 1 - Dry-run (aucune modification)
 
-**Plus simple avec la GUI :** double-clic sur `Lancer.bat`, cocher "Mode dry-run (-WhatIf)" en bas a gauche, puis LANCER. Meme effet que `Run.ps1 -WhatIf`, avec le log en direct dans la fenetre.
+**Plus simple avec la GUI :** double-clic sur `Lancer.bat`, cocher « Mode dry-run (-WhatIf) » dans la carte RÉGLAGES, puis cliquer LANCER L'INTERVENTION dans la barre d'action en bas de la fenêtre. Même effet que `Run.ps1 -WhatIf`, avec le journal en direct dans l'onglet Journal.
 
 En ligne de commande (fallback si la GUI ne s'ouvre pas) :
 
@@ -49,7 +59,7 @@ Relancer sans `-WhatIf`, puis choisir les modules un par un dans le menu. Points
 | 05 Updates | Long, besoin internet. Skip propre si hors-ligne. |
 | 06 Software | Pack de base (Firefox, 7-Zip, VLC, Sumatra, LibreOffice). Besoin internet. |
 | 07 Cleanup | DISM / SFC / defrag. Long. Besoin de 8 Go libres sur C: pour DISM. **Debrancher le disque externe de backup avant ce module** : il optimise/defragmente tous les disques fixes (le disque externe s'il est vu comme fixe = long et inutile), et "vider la corbeille" si coche vide aussi celle du disque externe. |
-| 08 Accounts | **MODULE CRITIQUE. Noter le mot de passe admin affiche en console (encadre jaune/vert).** |
+| 08 Accounts | **MODULE CRITIQUE. Noter la passphrase admin.** En console, elle s'affiche dans un encadré jaune/vert. Dans le cockpit, elle apparaît masquée en fin de run dans l'onglet Clôture : bouton Afficher pour la lire, bouton Copier pour la coller. |
 | 09 Comfort | OneDrive off, extensions visibles, suggestions off. |
 | 10 Report | Genere le rapport + la note utilisateur dans `runtime/`. |
 
@@ -57,7 +67,9 @@ Alternative rapide pour un PC deja connu : `powershell -ExecutionPolicy Bypass -
 
 ## Etape 3 - Verifications avant de rendre le PC
 
-- [ ] Recuperer le mot de passe admin dans `runtime\FICHE-PC-<PC>.txt`.
+Le cockpit reprend cette liste dans l'onglet **Clôture**, sous « Avant de rendre le PC » : les cases s'y cochent au fur et à mesure et la ligne de redémarrage passe en rouge si un reboot est requis.
+
+- [ ] Récupérer la passphrase admin : onglet **Clôture** du cockpit (bouton Afficher, puis Copier) ou fichier `runtime\FICHE-PC-<PC>.txt`.
 - [ ] **Se connecter une fois au compte `Admin-Local`** avec ce mot de passe pour verifier qu'il fonctionne. Tant que ce n'est pas valide, ne pas rendre le PC (tu es encore admin pour corriger).
 - [ ] Verifier que la session du proprietaire s'ouvre toujours (elle est maintenant en standard).
 - [ ] Si la banniere **REDEMARRAGE REQUIS** s'est affichee (ou fichier `runtime\reboot-required.flag` present) : redemarrer le PC avant de le rendre.
@@ -69,7 +81,7 @@ Alternative rapide pour un PC deja connu : `powershell -ExecutionPolicy Bypass -
 - [ ] **Communiquer le mot de passe admin** au proprietaire, a stocker dans un gestionnaire (Bitwarden gratuit) ou sur papier en lieu sur. Le mot de passe n'est volontairement pas dans la note utilisateur.
 - [ ] **Antivirus** : expliquer que l'Avast payant est remplace par Windows Defender (gratuit, integre a Windows, suffisant pour un usage normal). **Lui dire de resilier son abonnement Avast cote facturation** - le kit desinstalle le logiciel mais ne resilie pas l'abonnement ; sans resiliation, le proprietaire paie dans le vide.
 - [ ] **Compte et mot de passe** : expliquer que le compte quotidien est en standard pour la securite ; quand un logiciel demande un mot de passe administrateur lors d'une installation, c'est normal, c'est le compte `Admin-Local` + ce mot de passe. **Ce mot de passe n'a RIEN a voir avec l'antivirus** - ne pas confondre les deux sujets en parlant au proprietaire.
-- [ ] **Nettoyer la cle USB** : supprimer `runtime\FICHE-PC-*.txt` de la cle (ne pas repartir avec le mot de passe en clair sur la cle). Le conserver cote operateur uniquement dans un gestionnaire de mots de passe si besoin de suivi.
+- [ ] **Nettoyer la cle USB** : supprimer `runtime\FICHE-PC-*.txt` de la cle (ne pas repartir avec le mot de passe en clair sur la cle). Le bouton **Supprimer la fiche PC de la clé** de l'onglet Clôture fait ce ménage après confirmation. Le conserver cote operateur uniquement dans un gestionnaire de mots de passe si besoin de suivi.
 
 ---
 

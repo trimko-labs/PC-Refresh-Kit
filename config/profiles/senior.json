@@ -1,4 +1,6 @@
-﻿{
+{
+  "Description": "Poste le plus simple possible : démarrage allégé au maximum, rien de connu n'est retiré.",
+  "StartupKeep": [],
   "Debloat": "Conservative",
   "KeepAdmin": false,
   "Recycle": false,

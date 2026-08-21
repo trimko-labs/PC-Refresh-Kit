@@ -487,6 +487,57 @@ Describe 'Get-StartupMatch' {
 }
 
 # ---------------------------------------------------------------------------
+Describe 'Remove-KeptEntries' {
+    BeforeAll {
+        $script:Bl = @(
+            [PSCustomObject]@{ match = 'Steam';             label = 'Steam autostart (optionnel)' }
+            [PSCustomObject]@{ match = 'EpicGamesLauncher'; label = 'Epic Games Launcher' }
+            [PSCustomObject]@{ match = 'AdobeARM';          label = 'Adobe Reader/Acrobat Updater' }
+        )
+    }
+
+    It 'retire les entrées préservées par le profil' {
+        $r = Remove-KeptEntries -Blacklist $script:Bl -KeepPatterns @('Steam', 'EpicGamesLauncher')
+        @($r).Count | Should -Be 1
+        $r[0].match | Should -Be 'AdobeARM'
+    }
+
+    It 'compare sans tenir compte de la casse' {
+        $r = Remove-KeptEntries -Blacklist $script:Bl -KeepPatterns @('steam')
+        @($r).match | Should -Not -Contain 'Steam'
+    }
+
+    It 'renvoie la liste entière si aucun motif' {
+        @(Remove-KeptEntries -Blacklist $script:Bl -KeepPatterns @()).Count   | Should -Be 3
+        @(Remove-KeptEntries -Blacklist $script:Bl -KeepPatterns $null).Count | Should -Be 3
+    }
+
+    It 'ignore les motifs vides sans tout supprimer' {
+        @(Remove-KeptEntries -Blacklist $script:Bl -KeepPatterns @('', '  ')).Count | Should -Be 3
+    }
+
+    It "ne lève pas sous StrictMode sur une entrée sans label ni sur une entrée sans match" {
+        # config\startup-blacklist.json est éditable par l'opérateur : une entrée
+        # incomplète ne doit pas faire tomber le module 12 avant tout traitement.
+        Set-StrictMode -Version Latest
+        $partielle = @(
+            [PSCustomObject]@{ match = 'Steam'; label = 'Steam autostart' }
+            [PSCustomObject]@{ match = 'Foo' }
+            [PSCustomObject]@{ label = 'Bar' }
+        )
+        { Remove-KeptEntries -Blacklist $partielle -KeepPatterns @('Steam') } | Should -Not -Throw
+        $r = @(Remove-KeptEntries -Blacklist $partielle -KeepPatterns @('Steam'))
+        $r.Count    | Should -Be 2
+        $r[0].match | Should -Be 'Foo'
+        # L'entrée sans champ match reste éligible par son label : un motif qui matche
+        # « Bar » la préserve, elle sort donc de la liste à traiter.
+        $r2 = @(Remove-KeptEntries -Blacklist $partielle -KeepPatterns @('Bar'))
+        $r2.Count | Should -Be 2
+        @($r2 | Where-Object { $_.PSObject.Properties['label'] -and $_.label -eq 'Bar' }).Count | Should -Be 0
+    }
+}
+
+# ---------------------------------------------------------------------------
 Describe 'Get-StartupApprovedDisabledBytes' {
     It 'retourne 12 octets avec 0x03 en tête (désactivé)' {
         $b = Get-StartupApprovedDisabledBytes
@@ -844,6 +895,10 @@ Describe 'ConvertTo-ReportHtml' {
         $h4 | Should -Match '256 GB total'
         $h4 | Should -Match 'Windows Defender'
     }
+    It 'porte la marque Trimko Labs en en-tête et le lien du site en pied' {
+        $html | Should -Match 'Trimko Labs</div>'
+        $html | Should -Match 'https://kit\.trimko\.com'
+    }
 }
 
 # ---------------------------------------------------------------------------
@@ -1107,10 +1162,13 @@ Describe 'Get-BatteryCapacityFromHtml' {
 
 # ---------------------------------------------------------------------------
 Describe 'Run-GUI.ps1 (cockpit v1.6)' {
-    It 'utilise une RichTextBox et colore le journal via Get-LogLevelColor' {
+    It 'utilise une RichTextBox et colore le journal via Get-KitLogLevelColorHex' {
+        # Depuis la v2.2, le journal est sur fond sombre : la coloration passe par
+        # les hex de la palette (Get-KitLogLevelColorHex), pas par les noms de
+        # couleurs de Get-LogLevelColor qui reste la reference du mode console.
         $c = Get-Content "$PSScriptRoot\..\Run-GUI.ps1" -Raw
         $c | Should -Match 'System\.Windows\.Forms\.RichTextBox'
-        $c | Should -Match 'Get-LogLevelColor'
+        $c | Should -Match 'Get-KitLogLevelColorHex'
     }
     It 'affiche le temps écoulé via Format-Elapsed' {
         $c = Get-Content "$PSScriptRoot\..\Run-GUI.ps1" -Raw
@@ -1537,6 +1595,39 @@ Describe 'Read-KitProfile' {
 }
 
 # ---------------------------------------------------------------------------
+Describe 'Read-KitProfile champs de profil étendus' {
+    It 'lit Description et StartupKeep' {
+        $tmp = Join-Path $env:TEMP "profil-$(New-Guid).json"
+        '{ "Description": "Profil de test", "StartupKeep": ["Steam"], "Debloat": "Conservative" }' |
+            Set-Content -Path $tmp -Encoding UTF8
+        $p = Read-KitProfile -Path $tmp
+        $p.Description | Should -Be 'Profil de test'
+        @($p.StartupKeep) | Should -Contain 'Steam'
+        Remove-Item $tmp -Force
+    }
+
+    It 'conserve les deux motifs d''un StartupKeep à plusieurs éléments' {
+        $tmp = Join-Path $env:TEMP "profil-$(New-Guid).json"
+        '{ "StartupKeep": ["Steam","Discord"], "Debloat": "Standard" }' |
+            Set-Content -Path $tmp -Encoding UTF8
+        $p = Read-KitProfile -Path $tmp
+        @($p.StartupKeep).Count | Should -Be 2
+        @($p.StartupKeep) | Should -Contain 'Steam'
+        @($p.StartupKeep) | Should -Contain 'Discord'
+        Remove-Item $tmp -Force
+    }
+
+    It 'applique des valeurs par défaut vides pour un profil ancien' {
+        $tmp = Join-Path $env:TEMP "profil-$(New-Guid).json"
+        '{ "Debloat": "Standard" }' | Set-Content -Path $tmp -Encoding UTF8
+        $p = Read-KitProfile -Path $tmp
+        $p.Description | Should -Be ''
+        @($p.StartupKeep).Count | Should -Be 0
+        Remove-Item $tmp -Force
+    }
+}
+
+# ---------------------------------------------------------------------------
 Describe 'Test-InKeepList' {
     It 'match unidirectionnel: le nom matche un pattern de la keep-list' {
         Test-InKeepList -Name 'Microsoft.WindowsStore' -KeepList @('Microsoft.WindowsStore*') | Should -BeTrue
@@ -1560,7 +1651,7 @@ Describe 'Test-InKeepList' {
 # ---------------------------------------------------------------------------
 Describe 'Get-KitVersion' {
     It 'retourne la version courante du kit' {
-        Get-KitVersion | Should -Be 'v2.1'
+        Get-KitVersion | Should -Be 'v2.2'
     }
 }
 
@@ -1673,6 +1764,28 @@ Describe 'Build-ModuleArgList' {
     It '15 ajoute -ResetNetwork seulement si demandé' {
         Build-ModuleArgList -Id '15' -Options @{ NetReset = $true }  | Should -Contain '-ResetNetwork'
         Build-ModuleArgList -Id '15' -Options @{ NetReset = $false } | Should -Not -Contain '-ResetNetwork'
+    }
+}
+
+# ---------------------------------------------------------------------------
+Describe 'Build-ModuleArgList module 12' {
+    It 'transmet les motifs préservés' {
+        $a = Build-ModuleArgList -Id '12' -Options @{ StartupKeep = @('Steam', 'Discord') }
+        ($a -join ' ') | Should -Match '-KeepPatterns "Steam,Discord"'
+    }
+
+    It 'quote la liste pour survivre au re-parsing de la ligne de commande' {
+        # La GUI joint les arguments par ' ' et powershell.exe re-parse la ligne au
+        # lancement du module : un motif à espace ("Adobe Updater", label réel de
+        # config\startup-blacklist.json) doit rester UN seul argument, sinon le reste
+        # part dans le paramètre positionnel du module et les mauvaises entrées survivent.
+        $a = Build-ModuleArgList -Id '12' -Options @{ StartupKeep = @('Adobe Updater', 'Steam') }
+        ($a -join ' ') | Should -Match '-KeepPatterns "Adobe Updater,Steam"'
+        $a[$a.IndexOf('-KeepPatterns') + 1] | Should -Be '"Adobe Updater,Steam"'
+    }
+
+    It 'ne transmet rien sans motif' {
+        (Build-ModuleArgList -Id '12' -Options @{}) -join ' ' | Should -Not -Match 'KeepPatterns'
     }
 }
 

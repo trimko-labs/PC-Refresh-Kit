@@ -38,6 +38,7 @@ if (-not $script:KitLogFile) {
 . "$PSScriptRoot\Hardware.ps1"
 . "$PSScriptRoot\Report.ps1"
 . "$PSScriptRoot\Undo.ps1"
+. "$PSScriptRoot\Theme.ps1"
 
 # ---------------------------------------------------------------------------
 # Test-IsAdmin : vérifie si la session est élevée
@@ -437,6 +438,8 @@ function Get-OptionalTool {
 #   NetReset    : bool (défaut $false)
 #   BackupData  : bool (défaut $true)
 #   ScanDefender: bool (défaut $true)
+#   Description : string affichée à l'opérateur (défaut '')
+#   StartupKeep : string[] de motifs d'autostarts préservés (défaut @())
 # ---------------------------------------------------------------------------
 function Read-KitProfile {
     [CmdletBinding()]
@@ -461,6 +464,8 @@ function Read-KitProfile {
         NetReset    = $false
         BackupData  = $true
         ScanDefender = $true
+        Description = ''
+        StartupKeep = @()
     }
 
     # Construction de l'objet résultat à partir des défauts
@@ -473,12 +478,17 @@ function Read-KitProfile {
             $json = Get-Content $Path -Raw -Encoding UTF8 | ConvertFrom-Json
 
             # Écraser chaque clé scalaire si présente dans le fichier JSON
-            # Cast explicite : Debloat -> string, toutes les autres clés -> bool
+            # Cast explicite : Debloat et Description -> string, StartupKeep -> string[],
+            # toutes les autres clés -> bool
             foreach ($k in @($defaults.Keys)) {
                 $val = Get-JsonProp $json $k
                 if ($null -ne $val) {
-                    if ($k -eq 'Debloat') { $result[$k] = [string]$val }
-                    else                  { $result[$k] = [bool]$val }
+                    switch ($k) {
+                        'Debloat'     { $result[$k] = [string]$val }
+                        'Description' { $result[$k] = [string]$val }
+                        'StartupKeep' { $result[$k] = @($val | ForEach-Object { [string]$_ }) }
+                        default       { $result[$k] = [bool]$val }
+                    }
                 }
             }
 
@@ -535,6 +545,12 @@ function Build-ModuleArgList {
         }
         '08' { if ([bool]$Options['KeepAdmin']) { $a += '-KeepAdmin' } }
         '09' { if ([bool]$Options['OneDrive']) { $a += '-RemoveOneDrive' } }
+        '12' {
+            $keep = @($Options['StartupKeep'] | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+            # Quoter comme le chemin du module côté GUI : la ligne d'arguments est jointe
+            # par ' ' puis re-parsée par powershell.exe, un motif à espace se scinderait.
+            if ($keep.Count -gt 0) { $a += @('-KeepPatterns', ('"{0}"' -f ($keep -join ','))) }
+        }
         '15' { if ([bool]$Options['NetReset']) { $a += '-ResetNetwork' } }
     }
     $a
@@ -712,6 +728,38 @@ function Get-StartupMatch {
         if (($Name -and $Name -match $rx) -or ($Command -and $Command -match $rx)) { return $entry }
     }
     return $null
+}
+
+# ---------------------------------------------------------------------------
+# Remove-KeptEntries : retire de la liste noire les entrées qu'un profil
+# préserve. Le profil gamer désactivait le démarrage automatique de Steam et
+# d'Epic alors que son nom promet l'inverse. Pur.
+# ---------------------------------------------------------------------------
+function Remove-KeptEntries {
+    [CmdletBinding()]
+    param(
+        [AllowNull()][object[]]$Blacklist,
+        [AllowNull()][string[]]$KeepPatterns
+    )
+    if ($null -eq $Blacklist) { return @() }
+    $motifs = @($KeepPatterns | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    if ($motifs.Count -eq 0) { return $Blacklist }
+
+    return @($Blacklist | Where-Object {
+        $entry = $_
+        $garde = $false
+        # Gardes PSObject.Properties comme dans Get-StartupMatch : la liste noire est
+        # éditable à la main, et sous Set-StrictMode -Version Latest lire une propriété
+        # absente lève avant toute comparaison.
+        $champMatch = if ($entry.PSObject.Properties['match']) { [string]$entry.match } else { '' }
+        $champLabel = if ($entry.PSObject.Properties['label']) { [string]$entry.label } else { '' }
+        foreach ($m in $motifs) {
+            $rx = [regex]::Escape($m)
+            if (($champMatch -and $champMatch -match "(?i)$rx") -or
+                ($champLabel -and $champLabel -match "(?i)$rx")) { $garde = $true ; break }
+        }
+        -not $garde
+    })
 }
 
 function Get-StartupApprovedDisabledBytes {

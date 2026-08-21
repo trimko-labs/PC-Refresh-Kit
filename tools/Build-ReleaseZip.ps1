@@ -1,7 +1,7 @@
 ﻿# Produit un zip propre du kit pour distribution (exclut le dev).
 [CmdletBinding()]
 param(
-    [string]$Version = "2.1.0",
+    [string]$Version = "2.2.0",
     [string]$OutDir  = ""
 )
 $ErrorActionPreference = "Stop"
@@ -16,7 +16,7 @@ New-Item -ItemType Directory -Path $staging -Force | Out-Null
 # docs/ accompagne l'operateur sur le terrain (procedure + notes de version).
 $include = @(
     "modules","lib","config","tools","templates","vendor","docs",
-    "Run.ps1","Run-GUI.ps1","README.md","LICENSE","TOOLTIPS.md"
+    "Run.ps1","Run-GUI.ps1","README.md","LICENSE"
 ) + (Get-ChildItem $root -Filter "Lancer*.bat").Name
 
 foreach ($item in $include) {

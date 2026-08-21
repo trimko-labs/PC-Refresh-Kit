@@ -55,7 +55,7 @@ function Get-EndChecklistItems {
     [CmdletBinding()]
     param([AllowNull()][object]$RebootRequired)
     $items = @(
-        "Récupérer le mot de passe admin dans runtime\FICHE-PC-<PC>.txt",
+        "Récupérer la passphrase admin : onglet Clôture du cockpit (bouton Afficher) ou fichier runtime\FICHE-PC-<PC>.txt",
         "Se connecter une fois au compte Admin-Local pour vérifier le mot de passe",
         "Vérifier que la session du propriétaire s'ouvre (elle est en standard)",
         "Lire le rapport et vérifier le nombre d'ERROR"
@@ -192,7 +192,7 @@ function ConvertTo-HtmlEncoded {
 # Get-KitVersion : version courante du kit, source unique. Utilisée dans le
 # rapport (module 10). Centralise ce qui était codé en dur.
 # ---------------------------------------------------------------------------
-function Get-KitVersion { return 'v2.1' }
+function Get-KitVersion { return 'v2.2' }
 
 # ---------------------------------------------------------------------------
 # Remove-PasswordLines : retire d'un bloc de texte toute ligne portant un mot
@@ -388,6 +388,7 @@ function ConvertTo-ReportHtml {
 <header>
   <h1>Rapport d'intervention - PC-Refresh-Kit</h1>
   <div class="sub">$($M['ComputerName']) - généré le $($M['Generated'])</div>
+  <div style="color:#fff;opacity:.85;font-size:12px;margin-top:4px">Trimko Labs</div>
 </header>
 <main>
 "@)
@@ -540,6 +541,8 @@ function ConvertTo-ReportHtml {
     }
     [void]$sb.Append('</pre>')
 
-    [void]$sb.Append("</main><footer>PC-Refresh-Kit $($M['KitVersion']) - document technique d'intervention. Contient des informations machine : ne pas diffuser à des tiers.</footer></body></html>")
+    [void]$sb.Append("</main><footer>PC-Refresh-Kit $($M['KitVersion']) - document technique d'intervention. Contient des informations machine : ne pas diffuser à des tiers.")
+    [void]$sb.Append('<div><a href="https://kit.trimko.com" style="color:#0f766e">kit.trimko.com</a></div>')
+    [void]$sb.Append('</footer></body></html>')
     return $sb.ToString()
 }

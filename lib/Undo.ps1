@@ -43,7 +43,9 @@ function Get-RemovedAppsFromLog {
     [CmdletBinding()]
     param([string[]]$Lines)
     $apps = New-Object System.Collections.Generic.List[string]
-    if ($null -eq $Lines) { return @() }
+    # Virgule unaire obligatoire : un @() nu se déroule au retour et le caller reçoit
+    # $null, donc $removedApps.Count lève sous StrictMode (11-DeepClean, log vide).
+    if ($null -eq $Lines) { return ,@() }
     foreach ($l in $Lines) {
         if ($null -eq $l) { continue }
         if ($l -match '\]\s+(?:Provisioning supprimé|Supprimé)\s*:\s*(.+?)\s*$') {
