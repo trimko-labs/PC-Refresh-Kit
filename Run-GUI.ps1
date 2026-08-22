@@ -11,8 +11,21 @@ param(
     # la boucle de vérification visuelle (tools/Capture-Fenetre.ps1). LANCER est
     # désactivé.
     [switch]$UiPreview,
+    # -SelfTest : parcours utilisateur scripté (spec v2.3 §8). Pilote la fenêtre
+    # par de VRAIS événements WinForms sans jamais l'afficher, écrit une ligne
+    # [SELFTEST] par assertion et sort 0 (tout passé) ou 1. Aucune élévation,
+    # aucun module lancé, aucune boîte de dialogue : c'est ce qui le rend
+    # exécutable en CI.
+    [switch]$SelfTest,
     [ValidateSet('Prepare','Running','Done')][string]$PreviewPhase = 'Prepare'   # consommé en Task 9 (données factices des phases)
 )
+
+# -UiPreview pose des états FACTICES (run terminé, passphrase de démonstration) :
+# un parcours joué par-dessus vérifierait la préversion, pas le cockpit réel.
+if ($SelfTest -and $UiPreview) {
+    Write-Host '[SELFTEST] ERREUR : incompatible avec -UiPreview'
+    exit 2
+}
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Continue'
@@ -24,7 +37,11 @@ Add-Type -AssemblyName System.Drawing
 . "$PSScriptRoot\lib\Help.ps1"
 $script:HelpCatalog = Get-HelpCatalog -Path (Join-Path $PSScriptRoot 'config\help.fr.json')
 
-if (-not $UiPreview -and -not (Test-IsAdmin)) {
+# -SelfTest est exempté au même titre que -UiPreview : il ne lance aucun module,
+# donc aucun droit administrateur n'est requis. Surtout, cette garde ouvre une
+# boîte MODALE : sur un runner ou un poste non élevé, elle bloquerait le parcours
+# indéfiniment au lieu d'échouer (même famille que le gel console SFC/DISM).
+if (-not $UiPreview -and -not $SelfTest -and -not (Test-IsAdmin)) {
     [System.Windows.Forms.MessageBox]::Show(
         "Lancer via Lancer.bat (droits administrateur requis).`r`nPour un simple aperçu de l'interface : Run-GUI.ps1 -UiPreview",
         "PC-Refresh-Kit", 'OK', 'Warning') | Out-Null
@@ -33,22 +50,25 @@ if (-not $UiPreview -and -not (Test-IsAdmin)) {
 
 # --- État partagé (portée script pour être visible dans les handlers) ---
 $script:Root        = $PSScriptRoot
+# Ordre du tableau = ordre d'exécution = numéro d'étape affiché (1..15).
+# Id/Name/File restent techniques : Build-Queue, logs, profils et rapport en
+# dépendent. Label est le seul nom montré dans la fenêtre.
 $script:Modules     = @(
-    [PSCustomObject]@{ Id='00'; Name='Diagnostic'; File='00-Diagnostic.ps1' }
-    [PSCustomObject]@{ Id='01'; Name='Backup';     File='01-Backup.ps1' }
-    [PSCustomObject]@{ Id='02'; Name='Antivirus';  File='02-Antivirus.ps1' }
-    [PSCustomObject]@{ Id='03'; Name='Debloat';    File='03-Debloat.ps1' }
-    [PSCustomObject]@{ Id='04'; Name='Privacy';    File='04-Privacy.ps1' }
-    [PSCustomObject]@{ Id='05'; Name='Updates';    File='05-Updates.ps1' }
-    [PSCustomObject]@{ Id='06'; Name='Software';   File='06-Software.ps1' }
-    [PSCustomObject]@{ Id='07'; Name='Cleanup';    File='07-Cleanup.ps1' }
-    [PSCustomObject]@{ Id='08'; Name='Accounts';   File='08-Accounts.ps1' }
-    [PSCustomObject]@{ Id='09'; Name='Comfort';    File='09-Comfort.ps1' }
-    [PSCustomObject]@{ Id='11'; Name='DeepClean';  File='11-DeepClean.ps1' }
-    [PSCustomObject]@{ Id='12'; Name='Startup';    File='12-Startup.ps1' }
-    [PSCustomObject]@{ Id='13'; Name='BrowserPUP'; File='13-BrowserPUP.ps1' }
-    [PSCustomObject]@{ Id='15'; Name='Network';    File='15-Network.ps1' }
-    [PSCustomObject]@{ Id='10'; Name='Report';     File='10-Report.ps1' }
+    [PSCustomObject]@{ Id='00'; Name='Diagnostic'; Label='Diagnostic';        File='00-Diagnostic.ps1' }
+    [PSCustomObject]@{ Id='01'; Name='Backup';     Label='Sauvegarde';        File='01-Backup.ps1' }
+    [PSCustomObject]@{ Id='02'; Name='Antivirus';  Label='Antivirus';         File='02-Antivirus.ps1' }
+    [PSCustomObject]@{ Id='03'; Name='Debloat';    Label='Désencombrement';   File='03-Debloat.ps1' }
+    [PSCustomObject]@{ Id='04'; Name='Privacy';    Label='Confidentialité';   File='04-Privacy.ps1' }
+    [PSCustomObject]@{ Id='05'; Name='Updates';    Label='Mises à jour';      File='05-Updates.ps1' }
+    [PSCustomObject]@{ Id='06'; Name='Software';   Label='Logiciels';         File='06-Software.ps1' }
+    [PSCustomObject]@{ Id='07'; Name='Cleanup';    Label='Nettoyage';         File='07-Cleanup.ps1' }
+    [PSCustomObject]@{ Id='08'; Name='Accounts';   Label='Comptes';           File='08-Accounts.ps1' }
+    [PSCustomObject]@{ Id='09'; Name='Comfort';    Label='Confort';           File='09-Comfort.ps1' }
+    [PSCustomObject]@{ Id='11'; Name='DeepClean';  Label='Nettoyage profond'; File='11-DeepClean.ps1' }
+    [PSCustomObject]@{ Id='12'; Name='Startup';    Label='Démarrage';         File='12-Startup.ps1' }
+    [PSCustomObject]@{ Id='13'; Name='BrowserPUP'; Label='Navigateurs';       File='13-BrowserPUP.ps1' }
+    [PSCustomObject]@{ Id='15'; Name='Network';    Label='Réseau';            File='15-Network.ps1' }
+    [PSCustomObject]@{ Id='10'; Name='Report';     Label='Rapport';           File='10-Report.ps1' }
 )
 $script:Queue       = @()      # modules à exécuter (objets {Mod, Args})
 $script:QueueIndex  = 0
@@ -65,12 +85,16 @@ $script:LastHeartbeat   = $null    # horodatage du dernier heartbeat injecté
 $script:ModuleStartTime = $null    # horodatage du lancement du module courant
 $script:DismLastSize    = [long](-1) # taille du fichier DISM au dernier tick (module 07)
 $script:ModuleLogStart  = 0            # offset du log au démarrage du module courant (borne de tranche)
-$script:RunLabel        = ''           # préfixe de titre : '[DRY-RUN] ' ou '[RUN RÉEL] ' pendant un run
+$script:RunLabel        = ''           # préfixe de titre : '[SIMULATION] ' ou '[INTERVENTION RÉELLE] ' pendant un run
 $script:PrepCardsVisible = $true       # phase de la zone droite : cartes affichées (Préparer) ou masquées (Exécuter/Clôturer)
 $script:ProfileStartupKeep = @()       # motifs d'autostarts que le profil appliqué préserve (module 12)
 $script:ProfileDescription = ''        # description du profil appliqué, telle qu'écrite dans son JSON
 $script:AppliedProfileName = ''        # profil réellement APPLIQUÉ, pas la sélection de la liste déroulante
 $script:ProfileDescriptions = @{}      # nom de profil -> Description lue dans son JSON (aide au survol de la liste)
+$script:ApplyingProfile    = $false            # vrai pendant Set-GuiFromProfile : coupe la détection de divergence
+$script:CustomProfileLabel = '(personnalisé)'  # entrée sentinelle de la liste des profils, toujours en dernier
+$script:HelpPinned        = $false   # épingle : plus aucun remplacement du panneau
+$script:PendingHelpAction = $null    # action différée par le délai anti-transit
 # Nom de machine AFFICHÉ (bandeau et titre de la fenêtre). En aperçu, la machine
 # réelle n'a rien à faire dans les captures de documentation : la spec 5.5 fixe
 # PC-DEMO. Les CHEMINS (fiche, log, rapport) gardent $env:COMPUTERNAME : eux ne
@@ -91,6 +115,9 @@ $form.AutoScaleMode = 'Dpi'                       # les tailles suivent le DPI (
 $form.Size = New-Object System.Drawing.Size(1200, 720)
 $form.MinimumSize = New-Object System.Drawing.Size(1000, 576)   # = 1250x720 physiques à 125 %
 $form.BackColor = ConvertTo-KitColor $script:Palette.Ground
+# Le formulaire voit les touches avant ses contrôles : Échap dés-épingle l'aide
+# depuis n'importe où. Aucun CancelButton n'est posé, Échap est donc libre.
+$form.KeyPreview = $true
 
 # Racine : bandeau (haut) / corps (centre) / barre d'action (bas).
 $script:Band = New-KitBand -Machine $script:MachineLabel
@@ -126,14 +153,14 @@ $form.Controls.Add($body)
 $form.Controls.Add($script:HostAction)
 $form.Controls.Add($script:Band.Panel)
 
-# Badge de mode initial (le mode dry-run peut encore changer avant LANCER).
+# Badge de mode initial (la simulation peut encore être décochée avant LANCER).
 if ($UiPreview) { Set-KitBadgeMode -Band $script:Band -Mode Preview }
 elseif ($WhatIf) { Set-KitBadgeMode -Band $script:Band -Mode Simulation }
 else { Set-KitBadgeMode -Band $script:Band -Mode Real }
 
 # --- Colonne intervention : profil en tête, puis la timeline des modules. ---
 # Les contrôles d'options (debloat, compte, sensibles, données, Defender,
-# dry-run) survivent tels quels, mêmes variables et mêmes valeurs par défaut :
+# simulation) survivent tels quels, mêmes variables et mêmes valeurs par défaut :
 # ils quittent seulement la colonne pour des positions provisoires en bas de la
 # zone droite, jusqu'à ce que la Task 6 les range dans les cartes.
 $lblProfileTitle = New-KitEyebrow -Text 'Intervention'
@@ -147,23 +174,18 @@ $cmbProfile.Size = New-Object System.Drawing.Size(276, 24)
 $cmbProfile.Font = New-Object System.Drawing.Font('Segoe UI', 9.75)
 $script:HostLeft.Controls.Add($cmbProfile)
 
-$btnApplyProfile = New-Object System.Windows.Forms.Button
-$btnApplyProfile.Text = 'Appliquer'
-$btnApplyProfile.Location = New-Object System.Drawing.Point(0, 48)
-$btnApplyProfile.Size = New-Object System.Drawing.Size(132, 24)
-Set-KitButtonStyle -Button $btnApplyProfile -Kind Mini
-$script:HostLeft.Controls.Add($btnApplyProfile)
-
+# Plus de bouton Appliquer (v2.3, grief G2) : sélectionner un profil l'applique.
+# Enregistrer comme profil occupe donc seul la rangée sous la liste.
 $btnSaveProfile = New-Object System.Windows.Forms.Button
 $btnSaveProfile.Text = 'Enregistrer comme profil'
-$btnSaveProfile.Location = New-Object System.Drawing.Point(138, 48)
-$btnSaveProfile.Size = New-Object System.Drawing.Size(138, 24)
+$btnSaveProfile.Location = New-Object System.Drawing.Point(0, 48)
+$btnSaveProfile.Size = New-Object System.Drawing.Size(276, 24)
 Set-KitButtonStyle -Button $btnSaveProfile -Kind MiniGhost
 $script:HostLeft.Controls.Add($btnSaveProfile)
 # Aperçu : dernier contrôle actif qui écrirait sur le disque (config\profiles).
 if ($UiPreview) { $btnSaveProfile.Enabled = $false }
 
-$lblModulesEyebrow = New-KitEyebrow -Text 'Modules'
+$lblModulesEyebrow = New-KitEyebrow -Text 'Étapes'
 $lblModulesEyebrow.Location = New-Object System.Drawing.Point(0, 84)
 $script:HostLeft.Controls.Add($lblModulesEyebrow)
 
@@ -178,8 +200,10 @@ $rowsHost.Size = New-Object System.Drawing.Size(276, (24 * $script:Modules.Count
 $rowsHost.Anchor = 'Top,Bottom,Left,Right'
 $rowsHost.AutoScroll = $true
 $y = 0
+$step = 0
 foreach ($m in $script:Modules) {
-    $row = New-KitModuleRow -Id $m.Id -Name $m.Name -Mdl2Available $script:Mdl2
+    $step++
+    $row = New-KitModuleRow -Index ([string]$step) -Name $m.Label -Mdl2Available $script:Mdl2
     $row.Panel.Location = New-Object System.Drawing.Point(0, $y)
     $row.Panel.Width = 276
     $row.Panel.Anchor = 'Top,Left,Right'
@@ -187,6 +211,8 @@ foreach ($m in $script:Modules) {
     $script:ModuleRows[$m.Id] = $row
     # Le résumé de la barre d'action suit chaque case en direct (phase préparation).
     $row.CheckBox.Add_CheckedChanged({ Update-KitActionSummary })
+    # Décocher un module à la main fait diverger l'écran du profil sélectionné.
+    $row.CheckBox.Add_CheckedChanged({ Set-KitProfileCustom })
     $y += 24
 }
 $script:HostLeft.Controls.Add($rowsHost)
@@ -213,9 +239,18 @@ $eyeSettings = New-KitEyebrow -Text 'Réglages'
 $eyeSettings.Location = New-Object System.Drawing.Point(12, 8)
 $cardSettings.Controls.Add($eyeSettings)
 
-# Politique debloat (module 03) : conservateur / standard / agressif
+# Politique de débloatage (module 03) : conservateur / standard / agressif.
+# Libellé COURT à l'écran. La carte ne mesure pas 420 px : cette valeur n'est que
+# sa taille de création, Update-KitRightZoneForPhase la réécrit à chaque
+# disposition ($half = moitié de la zone droite) et elle tombe à ~325 px à la
+# taille mini 1000x576. La contrainte réelle est donc « tout tient entre x=12 et
+# x=313 ». Or « Politique de débloatage : » mesure 166 px et ne laisserait que
+# 125 px à la liste, dont la largeur préférée vaut déjà 121 : 4 px de marge, donc
+# le premier arrondi de DPI rogne la flèche déroulante. Le nom complet reste
+# porté par l'aide, dont les rubriques s'intitulent « Politique de débloatage :
+# Conservatrice / Standard / Agressive » et s'ouvrent au survol de la liste.
 $lblDebloat = New-Object System.Windows.Forms.Label
-$lblDebloat.Text = "Politique debloat :"
+$lblDebloat.Text = "Débloatage :"
 $lblDebloat.AutoSize = $true
 $lblDebloat.Font = New-Object System.Drawing.Font('Segoe UI', 9.75)
 $lblDebloat.ForeColor = ConvertTo-KitColor $script:Palette.Ink
@@ -228,7 +263,11 @@ $cmbDebloat.DropDownStyle = 'DropDownList'
 $cmbDebloat.SelectedIndex = 1   # Standard par défaut (décision grill)
 $cmbDebloat.Font = New-Object System.Drawing.Font('Segoe UI', 9.75)
 $cmbDebloat.Size = New-Object System.Drawing.Size(165, 24)
-$cmbDebloat.Location = New-Object System.Drawing.Point(127, 26)
+# « Débloatage : » mesure 93 px (Segoe UI 9.75) et démarre à x=12 : il finit à
+# 105, la liste se cale à 115 pour garder une gouttière de 10 px et finit à 280.
+# Soit 45 px de marge dans la carte la plus étroite (325 px à la taille mini),
+# et 145 px à la taille d'ouverture.
+$cmbDebloat.Location = New-Object System.Drawing.Point(115, 26)
 $cardSettings.Controls.Add($cmbDebloat)
 
 # Compte utilisateur : les deux radios partagent le parent carte, leur
@@ -271,9 +310,13 @@ $cbScanDefender.ForeColor = ConvertTo-KitColor $script:Palette.Ink
 $cbScanDefender.Location = New-Object System.Drawing.Point(12, 128)
 $cardSettings.Controls.Add($cbScanDefender)
 
-# Dry-run
+# Mode d'exécution : cochée = simulation, décochée = intervention réelle. Le
+# libellé DÉFINIT le mode, que le badge, le titre et le bouton LANCER reprennent.
+# Repli court prévu au plan : la version longue mesurait 354 px et dépassait de
+# 41 px la carte à la taille mini (325 px). Celle-ci en mesure 253 et finit à
+# 265, soit 60 px de marge.
 $cbDryRun = New-Object System.Windows.Forms.CheckBox
-$cbDryRun.Text = "Mode dry-run (-WhatIf)"
+$cbDryRun.Text = "Simulation : montrer sans rien modifier"
 $cbDryRun.AutoSize = $true
 $cbDryRun.Font = New-Object System.Drawing.Font('Segoe UI', 9.75)
 $cbDryRun.ForeColor = ConvertTo-KitColor $script:Palette.Ink
@@ -344,11 +387,69 @@ $txtHelp.ReadOnly = $true
 $txtHelp.BorderStyle = 'None'
 $txtHelp.Font = New-Object System.Drawing.Font('Segoe UI', 9.75)
 $txtHelp.ForeColor = ConvertTo-KitColor $script:Palette.Ink
-# Invite d'accueil : gardée en variable, elle est reposée après le peuplement
-# initial de la liste des profils (voir l'appel à Update-ProfileComboBox).
-$script:HelpPrompt = "Survolez un module ou une option : son explication complète s'affiche ici."
+# Invite d'accueil : gardée en variable, elle sert de repli au panneau (profil sans
+# rubrique ni description) et au retour en préparation. Au démarrage, l'application
+# du profil standard la remplace aussitôt par la rubrique de ce profil.
+$script:HelpPrompt = "Survolez une étape ou une option : son explication complète s'affiche ici."
 $txtHelp.Text = $script:HelpPrompt
 $script:TabHelp.Controls.Add($txtHelp)
+
+# Bandeau d'épinglage en tête du panneau d'aide. Ordre de docking : le RichTextBox
+# (Fill) est ajouté avant la barre (Top) puis renvoyé au fond - sans BringToFront,
+# WinForms docke dans l'ordre inverse d'ajout et le Fill passerait SOUS la barre.
+$script:HelpPinBar = New-Object System.Windows.Forms.Panel
+$script:HelpPinBar.Dock = 'Top'
+$script:HelpPinBar.Height = 24
+$script:HelpPinBar.BackColor = ConvertTo-KitColor $script:Palette.Card
+$script:BtnHelpPin = New-Object System.Windows.Forms.Button
+$script:BtnHelpPin.FlatStyle = 'Flat'
+$script:BtnHelpPin.FlatAppearance.BorderSize = 0
+$script:BtnHelpPin.Size = New-Object System.Drawing.Size(60, 20)
+$script:BtnHelpPin.Location = New-Object System.Drawing.Point(($script:HelpPinBar.Width - 64), 2)
+$script:BtnHelpPin.Anchor = 'Top,Right'
+$script:BtnHelpPin.Cursor = 'Hand'
+if ($script:Mdl2) {
+    $script:BtnHelpPin.Font = New-Object System.Drawing.Font('Segoe MDL2 Assets', 9)
+    $script:BtnHelpPin.Text = [string][char]0xE718
+} else {
+    $script:BtnHelpPin.Font = New-Object System.Drawing.Font('Segoe UI', 8.25)
+    $script:BtnHelpPin.Text = 'Épingler'
+}
+$script:BtnHelpPin.ForeColor = ConvertTo-KitColor $script:Palette.InkMuted
+$script:BtnHelpPin.BackColor = ConvertTo-KitColor $script:Palette.Card
+$script:HelpPinBar.Controls.Add($script:BtnHelpPin)
+$script:TabHelp.Controls.Add($script:HelpPinBar)
+$txtHelp.BringToFront()
+# L'infobulle du bouton est posée plus bas, avec les autres : $toolTip n'existe
+# pas encore à ce point du fichier.
+
+# Set-KitHelpPinned : bascule l'épingle et l'annonce visuellement. Définie avant
+# le Add_Click ci-dessous ; le timer qu'elle arrête est créé plus bas, mais aucun
+# clic ne peut survenir avant l'affichage de la fenêtre.
+function Set-KitHelpPinned {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][bool]$On)
+    $script:HelpPinned = $On
+    if ($On) { $script:HelpHoverTimer.Stop() }
+    if ($script:Mdl2) { $script:BtnHelpPin.Text = [string][char]$(if ($On) { 0xE77A } else { 0xE718 }) }
+    else { $script:BtnHelpPin.Text = if ($On) { 'Épinglé' } else { 'Épingler' } }
+    $script:BtnHelpPin.BackColor = ConvertTo-KitColor $(if ($On) { $script:Palette.AccentDark } else { $script:Palette.Card })
+    $script:BtnHelpPin.ForeColor = if ($On) { [System.Drawing.Color]::White } else { ConvertTo-KitColor $script:Palette.InkMuted }
+}
+$script:BtnHelpPin.Add_Click({ Set-KitHelpPinned (-not $script:HelpPinned) })
+
+# Entrer dans le panneau d'aide = lecture en cours : le survol en attente est
+# annulé tout de suite (on quittait un module pour venir lire, pas pour que sa
+# rubrique remplace celle qu'on lit). Ces câblages ne servent QU'À stopper le
+# minuteur - le gel lui-même est géométrique, voir Test-KitHelpHovered : il se
+# redérive de la position réelle du curseur au moment de la décision, donc aucun
+# MouseLeave perdu ne peut le laisser armé, et aucun enfant du panneau ne peut
+# créer de trou. Le bouton épingle est dans la liste : le survoler doit aussi
+# désarmer le survol en attente, sinon il remplacerait la rubrique juste avant
+# le clic d'épinglage.
+foreach ($helpZone in @($script:TabHelp, $txtHelp, $script:HelpPinBar, $script:BtnHelpPin)) {
+    $helpZone.Add_MouseEnter({ $script:HelpHoverTimer.Stop() })
+}
 
 # RichTextBox : coloration par niveau. Fond sombre assorti au rapport HTML.
 $txtLog = New-Object System.Windows.Forms.RichTextBox
@@ -363,7 +464,8 @@ $txtLog.ForeColor = ConvertTo-KitColor $script:Palette.LogInfo
 $script:TabLog.Controls.Add($txtLog)
 
 $script:Tabs.TabPages.Add($script:TabHelp)
-$script:Tabs.TabPages.Add($script:TabLog)
+# Le Journal n'a rien à dire avant le run : son onglet est ajouté par
+# Show-KitJournalTab au clic LANCER (grief G1 v2.3).
 $script:HostRight.Controls.Add($script:Tabs)
 
 # Taille initiale calée sur la zone droite RÉELLE (le panneau est déjà docké et
@@ -412,6 +514,15 @@ function Update-KitRightZoneForPhase {
     $w = [Math]::Max(200, ($script:HostRight.ClientSize.Width - 24))
     $h = [Math]::Max(120, ($script:HostRight.ClientSize.Height - 20 - $top))
     $script:Tabs.SetBounds(0, $top, $w, $h)
+}
+
+# Ajoute l'onglet Journal (premier run de la session) et l'affiche. Idempotente,
+# même pattern que la page Clôture (TabPages.Contains).
+function Show-KitJournalTab {
+    if (-not $script:Tabs.TabPages.Contains($script:TabLog)) {
+        $script:Tabs.TabPages.Add($script:TabLog)
+    }
+    $script:Tabs.SelectedTab = $script:TabLog
 }
 
 # Redimensionnement de la zone : même calcul, avec la visibilité de la phase en
@@ -495,7 +606,7 @@ $eyePwd.Location = New-Object System.Drawing.Point(12, 8)
 $cardPwd.Controls.Add($eyePwd)
 
 $script:LblPwdValue = New-Object System.Windows.Forms.Label
-$script:LblPwdValue.Text = '(généré après le module Accounts)'
+$script:LblPwdValue.Text = "(généré après l'étape Comptes)"
 $script:LblPwdValue.AutoSize = $true
 $script:LblPwdValue.Location = New-Object System.Drawing.Point(12, 30)
 $script:LblPwdValue.Font = New-Object System.Drawing.Font('Consolas', 11)
@@ -608,6 +719,14 @@ function Update-KitActionBarLayout {
 $script:HostAction.Add_Resize({ Update-KitActionBarLayout })
 Update-KitActionBarLayout
 
+# Le bouton principal annonce le mode : LANCER LA SIMULATION quand la case
+# Simulation est cochée, LANCER L'INTERVENTION sinon. Le layout de la barre est
+# rejoué : la largeur du libellé conditionne la position de la piste.
+function Update-KitRunButtonText {
+    $btnRun.Text = if ($cbDryRun.Checked) { "▶  LANCER LA SIMULATION" } else { "▶  LANCER L'INTERVENTION" }
+    Update-KitActionBarLayout
+}
+
 # --- Infos-bulles et panneau d'aide, tous deux alimentés par config\help.fr.json ---
 $toolTip = New-Object System.Windows.Forms.ToolTip
 $toolTip.InitialDelay = 500
@@ -625,14 +744,17 @@ function Show-KitHelp {
     catch { }   # l'aide ne doit jamais casser la GUI
 }
 
-# Show-KitProfileHelp : aide d'un profil, en trois temps. Un profil enregistré
+# Show-KitProfileHelpCore : aide d'un profil, en trois temps. Un profil enregistré
 # depuis le cockpit n'a pas de rubrique de catalogue : sans cette cascade, le
 # panneau lui répondait « Aide indisponible - catalogue absent » alors que son
-# JSON porte une Description écrite par l'opérateur.
-function Show-KitProfileHelp {
+# JSON porte une Description écrite par l'opérateur. ÉCRIVAIN FINAL : la décision
+# d'afficher a déjà été prise par Show-KitProfileHelp.
+function Show-KitProfileHelpCore {
     [CmdletBinding()]
     param([AllowEmptyString()][AllowNull()][string]$Name)
     if ([string]::IsNullOrWhiteSpace($Name)) { return }
+    # La sentinelle n'est pas un fichier de profil : sa rubrique porte un nom fixe.
+    if ($Name -eq $script:CustomProfileLabel) { Show-KitHelp -Key 'profile.custom'; return }
     if ($script:HelpCatalog -and $script:HelpCatalog.ContainsKey("profile.$Name")) {
         Show-KitHelp -Key "profile.$Name"
         return
@@ -646,6 +768,77 @@ function Show-KitProfileHelp {
         return
     }
     $txtHelp.Text = $script:HelpPrompt
+}
+
+# Le gel ne se latche pas : il se REDÉRIVE de la position réelle du curseur.
+# Un MouseLeave perdu (boîte de dialogue par-dessus le panneau, bascule
+# d'onglet au clavier) ne peut donc jamais geler l'aide à vie, et aucun enfant
+# du panneau ne peut créer de trou : la géométrie couvre toute l'aire, boutons
+# compris. Visible est la visibilité EFFECTIVE : fausse tant que la fenêtre
+# n'est pas affichée et sur un onglet non sélectionné - correct ici, rien n'est
+# survolé dans ces deux cas. Le try/catch couvre la fermeture et l'absence de
+# handle.
+function Test-KitHelpHovered {
+    try {
+        if (-not $script:TabHelp.Visible) { return $false }
+        return $script:TabHelp.RectangleToScreen($script:TabHelp.ClientRectangle).Contains([System.Windows.Forms.Cursor]::Position)
+    } catch { return $false }
+}
+
+# Délai anti-transit : un survol ne remplace le panneau qu'après 350 ms de
+# stabilité. Timer unique ; chaque survol écrase l'action en attente.
+$script:HelpHoverTimer = New-Object System.Windows.Forms.Timer
+$script:HelpHoverTimer.Interval = 350
+$script:HelpHoverTimer.Add_Tick({
+    $script:HelpHoverTimer.Stop()
+    # L'état a pu changer pendant l'attente (épinglage, entrée dans le panneau).
+    if (-not $script:HelpPinned -and -not (Test-KitHelpHovered) -and $script:PendingHelpAction) {
+        & $script:PendingHelpAction
+    }
+    # Jouée ou écartée, l'action est morte (le minuteur est arrêté, et tout
+    # nouveau survol réarme la sienne) : la libérer relâche la fermeture capturée.
+    $script:PendingHelpAction = $null
+})
+
+# Invoke-KitHelpRequest : aiguillage unique de toute demande d'aide. La règle est
+# dans Get-KitHelpDecision (pure, testée) ; ici, seule la mécanique WinForms.
+function Invoke-KitHelpRequest {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][scriptblock]$Action,
+        [ValidateSet('Hover','Direct')][string]$Source = 'Hover'
+    )
+    switch (Get-KitHelpDecision -Source $Source -Pinned $script:HelpPinned -Frozen (Test-KitHelpHovered)) {
+        'Show'   { $script:HelpHoverTimer.Stop(); & $Action }
+        'Defer'  { $script:PendingHelpAction = $Action; $script:HelpHoverTimer.Stop(); $script:HelpHoverTimer.Start() }
+        'Ignore' { }
+    }
+}
+
+# Request-KitHelp : ce que les survols appellent à la place de Show-KitHelp.
+function Request-KitHelp {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Key,
+        [ValidateSet('Hover','Direct')][string]$Source = 'Hover'
+    )
+    # GetNewClosure : capture par COPIE, sinon l'action différée lirait la clé du
+    # dernier survol au moment du tick, pas celle du survol qui l'a armée.
+    $k = $Key
+    Invoke-KitHelpRequest -Action { Show-KitHelp -Key $k }.GetNewClosure() -Source $Source
+}
+
+# Show-KitProfileHelp : même aiguillage pour l'aide des profils. Les appels sans
+# -Source (application d'un profil) sont des événements d'application : Direct.
+function Show-KitProfileHelp {
+    [CmdletBinding()]
+    param(
+        [AllowEmptyString()][AllowNull()][string]$Name,
+        [ValidateSet('Hover','Direct')][string]$Source = 'Direct'
+    )
+    if ([string]::IsNullOrWhiteSpace($Name)) { return }
+    $n = $Name
+    Invoke-KitHelpRequest -Action { Show-KitProfileHelpCore -Name $n }.GetNewClosure() -Source $Source
 }
 
 # Table de correspondance contrôle -> clé d'aide.
@@ -669,7 +862,6 @@ $helpBindings = @(
     @{ Ctrl = $btnCopy;           Key = 'action.copypassword' }
     @{ Ctrl = $script:BtnPwdShow; Key = 'action.pwdshow' }
     @{ Ctrl = $btnDelFiche;       Key = 'action.delfiche' }
-    @{ Ctrl = $btnApplyProfile;   Key = 'action.applyprofile' }
     @{ Ctrl = $btnSaveProfile;    Key = 'action.saveprofile' }
 )
 
@@ -677,34 +869,35 @@ foreach ($b in $helpBindings) {
     $entry = Get-HelpEntry -Catalog $script:HelpCatalog -Key $b.Key
     $toolTip.SetToolTip($b.Ctrl, (Format-HelpTooltip -Entry $entry -Width 90))
     $cle = $b.Key    # capture par valeur : sans copie locale, tous les handlers verraient la dernière clé
-    $b.Ctrl.Add_MouseEnter({ Show-KitHelp -Key $cle }.GetNewClosure())
+    $b.Ctrl.Add_MouseEnter({ Request-KitHelp -Key $cle }.GetNewClosure())
 }
+$toolTip.SetToolTip($script:BtnHelpPin, "Épingler cette rubrique : le panneau ne changera plus jusqu'au prochain clic (ou Échap).")
 
 # Politique de débloatage : l'aide dépend de la valeur choisie.
 $debloatKeys = @{ 'Conservateur' = 'debloat.conservative'; 'Standard' = 'debloat.standard'; 'Agressif' = 'debloat.aggressive' }
 $cmbDebloat.Add_MouseEnter({
     $k = $debloatKeys[[string]$cmbDebloat.SelectedItem]
-    if ($k) { Show-KitHelp -Key $k }
+    if ($k) { Request-KitHelp -Key $k }
 })
 $cmbDebloat.Add_SelectedIndexChanged({
+    # Choisir une politique est un acte volontaire : l'aide suit sans délai.
     $k = $debloatKeys[[string]$cmbDebloat.SelectedItem]
-    if ($k) { Show-KitHelp -Key $k }
+    if ($k) { Request-KitHelp -Key $k -Source Direct }
 })
 
 # Profils : l'aide dépend du profil sélectionné (catalogue, puis Description du JSON).
 $cmbProfile.Add_MouseEnter({
-    Show-KitProfileHelp -Name ([string]$cmbProfile.SelectedItem)
+    Show-KitProfileHelp -Name ([string]$cmbProfile.SelectedItem) -Source Hover
 })
-$cmbProfile.Add_SelectedIndexChanged({
-    Show-KitProfileHelp -Name ([string]$cmbProfile.SelectedItem)
-})
+# Sélectionner = appliquer (v2.3) : l'aide du profil est affichée par la fonction.
+$cmbProfile.Add_SelectedIndexChanged({ Invoke-KitProfileSelection })
 
 # Timeline : aide du module survolé (panel entier + nom, l'un ou l'autre reçoit l'événement).
 foreach ($m in $script:Modules) {
     $row = $script:ModuleRows[$m.Id]
     $key = "module.$($m.Id)"
     foreach ($ctrl in @($row.Panel, $row.NameLabel, $row.CheckBox)) {
-        $ctrl.Add_MouseEnter({ Show-KitHelp -Key $key }.GetNewClosure())
+        $ctrl.Add_MouseEnter({ Request-KitHelp -Key $key }.GetNewClosure())
     }
     $entryRow = Get-HelpEntry -Catalog $script:HelpCatalog -Key $key
     $toolTip.SetToolTip($row.NameLabel, (Format-HelpTooltip -Entry $entryRow -Width 90))
@@ -860,8 +1053,8 @@ function Update-KitActionSummary {
     $checked = @(Get-KitCheckedIds)
     $sensitives = @(@($cbRecycle, $cbWinOld, $cbCache, $cbOneDrive, $cbOem, $cbNetReset) |
                     Where-Object { $_.Checked })
-    # Le profil AFFICHÉ est celui réellement appliqué : sélectionner une entrée de la
-    # liste déroulante sans cliquer Appliquer ne doit rien changer au résumé.
+    # Le profil AFFICHÉ est celui réellement appliqué : depuis la v2.3 la sélection
+    # applique, et une case modifiée à la main le fait passer à « personnalisé ».
     $profName = $script:AppliedProfileName
     $script:ActionSummary.Text = Get-RunSummaryText -ModuleCount $checked.Count `
         -SensitiveCount $sensitives.Count -ProfileName $profName -IsDryRun $cbDryRun.Checked
@@ -885,6 +1078,7 @@ function Set-KitActionPhase {
             $script:BtnNewRun.Visible = $false
             $script:ActionProgressTrack.Visible = $false
             $script:ActionSummary.ForeColor = ConvertTo-KitColor $script:Palette.InkSoft
+            Update-KitRunButtonText
             Update-KitActionSummary
         }
         'Running' {
@@ -1003,10 +1197,11 @@ function Show-BackupPause {
 # ---------------------------------------------------------------------------
 
 function Update-ProfileComboBox {
-    # Repeuple la combobox depuis config\profiles\*.json (BaseName uniquement) et
-    # relit au passage la Description de chaque profil : l'aide au survol la lit
-    # en mémoire, jamais sur le disque. La table est remplie AVANT la sélection
-    # initiale, qui déclenche SelectedIndexChanged donc l'aide.
+    # Repeuple la liste depuis config\profiles\*.json + la sentinelle (personnalisé)
+    # en dernier, relit les Descriptions en mémoire, puis sélectionne $Select :
+    # la sélection déclenche SelectedIndexChanged, donc l'APPLICATION du profil (v2.3).
+    [CmdletBinding()]
+    param([string]$Select = 'standard')
     $cmbProfile.Items.Clear()
     $script:ProfileDescriptions = @{}
     $profilesDir = Join-Path $script:Root 'config\profiles'
@@ -1020,13 +1215,10 @@ function Update-ProfileComboBox {
             catch { }
         }
     }
-    if ($cmbProfile.Items.Count -gt 0) {
-        # Aperçu : la capture de documentation montre la politique Standard, pas
-        # le premier profil de l'ordre alphabétique (gamer).
-        $idx = if ($UiPreview) { $cmbProfile.Items.IndexOf('standard') } else { -1 }
-        if ($idx -lt 0) { $idx = 0 }
-        $cmbProfile.SelectedIndex = $idx
-    }
+    [void]$cmbProfile.Items.Add($script:CustomProfileLabel)
+    $idx = $cmbProfile.Items.IndexOf($Select)
+    if ($idx -lt 0) { $idx = 0 }   # standard absent : premier profil, sinon la sentinelle
+    $cmbProfile.SelectedIndex = $idx
 }
 
 function Set-GuiFromProfile {
@@ -1090,36 +1282,87 @@ function Set-KitPrepareEnabled {
     foreach ($m in $script:Modules) { $script:ModuleRows[$m.Id].CheckBox.Enabled = $Enabled }
     foreach ($c in @($cmbDebloat, $rbStd, $rbKeep, $cbBackupData, $cbScanDefender, $cbDryRun,
                      $cbRecycle, $cbWinOld, $cbCache, $cbOneDrive, $cbOem, $cbNetReset,
-                     $cmbProfile, $btnApplyProfile, $btnSaveProfile)) {
+                     $cmbProfile, $btnSaveProfile)) {
         $c.Enabled = $Enabled
     }
     # Aperçu : Enregistrer comme profil reste le seul contrôle écrivain, jamais réactivé.
     if ($Enabled -and $UiPreview) { $btnSaveProfile.Enabled = $false }
 }
 
-# Initialisation : peupler la combobox au démarrage
+# Sélection dans la liste = application immédiate (v2.3, grief G2). La sentinelle
+# (personnalisé) représente l'état courant : la sélectionner ne touche aucune case.
+function Invoke-KitProfileSelection {
+    if ($script:ApplyingProfile) { return }   # bascule programmatique en cours
+    if ($script:Running) { return }           # la liste est désactivée pendant un run, ceinture
+    $sel = [string]$cmbProfile.SelectedItem
+    if ([string]::IsNullOrWhiteSpace($sel)) { return }
+    if ($sel -eq $script:CustomProfileLabel) {
+        $script:AppliedProfileName = 'personnalisé'
+        Update-KitActionSummary
+        Show-KitProfileHelp -Name $sel
+        return
+    }
+    $profPath = Join-Path $script:Root "config\profiles\$sel.json"
+    if (-not (Test-Path $profPath)) {
+        [System.Windows.Forms.MessageBox]::Show(
+            "Fichier de profil introuvable : $profPath", "PC-Refresh-Kit", 'OK', 'Warning') | Out-Null
+        return
+    }
+    try {
+        $prof = Read-KitProfile -Path $profPath
+        $script:ApplyingProfile = $true
+        try { Set-GuiFromProfile $prof } finally { $script:ApplyingProfile = $false }
+        $script:AppliedProfileName = $sel
+        Update-KitActionSummary
+        Show-KitProfileHelp -Name $sel
+    } catch {
+        [System.Windows.Forms.MessageBox]::Show(
+            "Erreur lors de la lecture du profil : $_", "PC-Refresh-Kit", 'OK', 'Error') | Out-Null
+    }
+}
+
+# Un contrôle piloté par le profil vient de changer à la main : l'étiquette de la
+# liste bascule sur (personnalisé) sans toucher aux cases.
+function Set-KitProfileCustom {
+    if ($script:ApplyingProfile) { return }
+    if ([string]$cmbProfile.SelectedItem -eq $script:CustomProfileLabel) { return }
+    $script:ApplyingProfile = $true
+    try { $cmbProfile.SelectedItem = $script:CustomProfileLabel } finally { $script:ApplyingProfile = $false }
+    $script:AppliedProfileName = 'personnalisé'
+    Update-KitActionSummary
+}
+
+# Initialisation : peupler la liste au démarrage. Le défaut -Select 'standard'
+# applique le profil standard d'office, aide comprise (v2.3).
 Update-ProfileComboBox
-# Sélectionner la première entrée déclenche SelectedIndexChanged, donc l'aide de ce
-# profil. Au démarrage aucun profil n'est APPLIQUÉ : le panneau décrirait un profil
-# qui n'est pas en vigueur, exactement ce que le résumé de la barre d'action se
-# garde d'annoncer. L'invite reprend donc sa place.
-$txtHelp.Text = $script:HelpPrompt
+# Bouton principal en accord avec le mode dès l'ouverture : -WhatIf coche la case
+# avant tout câblage, aucun handler n'écoutait alors pour rattraper le libellé.
+Update-KitRunButtonText
 
 # --- Handlers ---
 
-# Résumé live de la barre d'action : chaque option de la zone droite le rafraîchit,
-# comme les cases de la timeline. Ce câblage vit ici (et non près des cartes) parce
-# qu'il appelle Set-KitActionPhase, définie plus haut mais après la construction :
-# en PowerShell, une fonction doit être exécutée avant d'être appelable.
-foreach ($c in @($cbRecycle, $cbWinOld, $cbCache, $cbOneDrive, $cbOem, $cbNetReset, $cbDryRun)) {
-    $c.Add_CheckedChanged({ Update-KitActionSummary })
+# Le résumé de la barre suit les actions sensibles et le mode en direct. Ce câblage
+# vit ici (et non près des cartes) parce que la ligne Set-KitActionPhase qui suit est
+# un APPEL : en PowerShell, une définition de fonction doit avoir été exécutée pour
+# être appelable. Les corps de handler, eux, ne s'exécutent qu'aux événements : ils
+# peuvent nommer des fonctions déclarées plus bas dans le fichier.
+foreach ($cbSensitive in @($cbRecycle, $cbWinOld, $cbCache, $cbOneDrive, $cbOem, $cbNetReset)) {
+    $cbSensitive.Add_CheckedChanged({ Update-KitActionSummary })
 }
 $cbDryRun.Add_CheckedChanged({
+    Update-KitActionSummary
+    Update-KitRunButtonText
     if (-not $UiPreview) {
-        if ($cbDryRun.Checked) { Set-KitBadgeMode -Band $script:Band -Mode Simulation }
-        else { Set-KitBadgeMode -Band $script:Band -Mode Real }
+        $mode = if ($cbDryRun.Checked) { 'Simulation' } else { 'Real' }
+        Set-KitBadgeMode -Band $script:Band -Mode $mode
     }
 })
+# Divergence profil : tout contrôle piloté par Set-GuiFromProfile bascule l'étiquette.
+foreach ($cbProfiled in @($cbRecycle, $cbWinOld, $cbCache, $cbOneDrive, $cbOem, $cbNetReset,
+                          $cbBackupData, $cbScanDefender, $rbKeep, $rbStd)) {
+    $cbProfiled.Add_CheckedChanged({ Set-KitProfileCustom })
+}
+$cmbDebloat.Add_SelectedIndexChanged({ Set-KitProfileCustom })
 Set-KitActionPhase -Phase Prepare
 
 $btnRun.Add_Click({
@@ -1130,18 +1373,25 @@ $btnRun.Add_Click({
                     Select-Object -ExpandProperty Name)
     $foreign = @(Get-ForeignFicheNames -FileNames $ficheNames -ComputerName $env:COMPUTERNAME)
     if ($foreign.Count -gt 0) {
+        # Pluriel grammatical réel plutôt que des « (s) » (règle de maison, cf.
+        # lib\Theme.ps1) : le compte est connu ici, autant l'accorder.
+        $plusieurs = $foreign.Count -gt 1
+        $tete  = if ($plusieurs) { "Fiches d'interventions précédentes présentes sur la clé :" }
+                 else            { "Fiche d'une intervention précédente présente sur la clé :" }
+        $corps = if ($plusieurs) { "Ces fichiers contiennent des mots de passe en clair. Continuer quand même ?`r`n(Les supprimer manuellement depuis runtime\ après avoir vérifié qu'ils sont notés ailleurs.)" }
+                 else            { "Ce fichier contient des mots de passe en clair. Continuer quand même ?`r`n(Le supprimer manuellement depuis runtime\ après avoir vérifié qu'ils sont notés ailleurs.)" }
         $r = [System.Windows.Forms.MessageBox]::Show(
-            "Fiche(s) d'une intervention précédente présente(s) sur la clé :`r`n`r`n$($foreign -join "`r`n")`r`n`r`nCes fichiers contiennent des mots de passe en clair. Continuer quand même ?`r`n(Les supprimer manuellement depuis runtime\ après avoir vérifié qu'ils sont notés ailleurs.)",
+            "$tete`r`n`r`n$($foreign -join "`r`n")`r`n`r`n$corps",
             "PC-Refresh-Kit - fiche étrangère détectée", 'YesNo', 'Warning')
         if ($r -eq 'No') { return }
     }
     Build-Queue
     # Calculer le préfixe de titre APRÈS Build-Queue (l'état cbDryRun est figé à ce moment)
-    $script:RunLabel = if ($cbDryRun.Checked) { '[DRY-RUN] ' } else { '[RUN RÉEL] ' }
+    $script:RunLabel = if ($cbDryRun.Checked) { '[SIMULATION] ' } else { '[INTERVENTION RÉELLE] ' }
     if ($cbDryRun.Checked) { Set-KitBadgeMode -Band $script:Band -Mode Simulation }
     else { Set-KitBadgeMode -Band $script:Band -Mode Real }
     if ($script:Queue.Count -eq 0) {
-        [System.Windows.Forms.MessageBox]::Show("Aucun module sélectionné.", "PC-Refresh-Kit") | Out-Null
+        [System.Windows.Forms.MessageBox]::Show("Aucune étape sélectionnée.", "PC-Refresh-Kit") | Out-Null
         return
     }
     # Timeline : tous les états posés d'un coup au lancement.
@@ -1180,7 +1430,7 @@ $btnRun.Add_Click({
     if ($script:Tabs.TabPages.Contains($script:TabClose)) {
         $script:Tabs.TabPages.Remove($script:TabClose)
     }
-    $script:Tabs.SelectedTab = $script:TabLog
+    Show-KitJournalTab
     $form.Text = "$($script:RunLabel)PC-Refresh-Kit - $($script:MachineLabel)"
     Start-NextModule
     $timer.Start()
@@ -1193,8 +1443,8 @@ $timer.Add_Tick({
             $elapsed = Format-Elapsed ([int]((Get-Date) - $script:StartTime).TotalSeconds)
             $form.Text = "$($script:RunLabel)PC-Refresh-Kit - $($script:MachineLabel) - écoulé $elapsed"
             $cur = $script:Queue[$script:QueueIndex]
-            $lbl = if ($cur) { "$($cur.Mod.Id) $($cur.Mod.Name)" } else { '' }
-            $script:ActionSummary.Text = "Module $([Math]::Min($script:QueueIndex + 1, $script:Queue.Count))/$($script:Queue.Count) - $lbl - écoulé $elapsed"
+            $lbl = if ($cur) { [string]$cur.Mod.Label } else { '' }
+            $script:ActionSummary.Text = "Étape $([Math]::Min($script:QueueIndex + 1, $script:Queue.Count))/$($script:Queue.Count) - $lbl - écoulé $elapsed"
             if ($cur -and $script:ModuleStartTime) {
                 $curSec = [int]((Get-Date) - $script:ModuleStartTime).TotalSeconds
                 Set-KitModuleRowState -Row $script:ModuleRows[$cur.Mod.Id] -State Running -Detail "en cours - $(Format-Elapsed $curSec)" -Mdl2Available $script:Mdl2
@@ -1268,9 +1518,13 @@ $timer.Add_Tick({
                 }
                 $state = Get-ModuleTrancheState -ExitCode $exitCode -TrancheLines $tranche
                 $durSec = [int]((Get-Date) - $script:ModuleStartTime).TotalSeconds
+                # Pluriel grammatical réel plutôt qu'un « (s) » : le compte sort de
+                # la même tranche que l'état, il est donc toujours disponible ici.
+                $nWarn = [int](Get-ReportSummary -Lines $tranche).CountWarn
+                $sWarn = if ($nWarn -gt 1) { 's' } else { '' }
                 $detail = switch ($state) {
                     'Ok'    { Format-Elapsed $durSec }
-                    'Warn'  { "$(Format-Elapsed $durSec) - avertissement(s)" }
+                    'Warn'  { "$(Format-Elapsed $durSec) - $nWarn avertissement$sWarn" }
                     'Error' { "$(Format-Elapsed $durSec) - erreur" }
                 }
                 Set-KitModuleRowState -Row $script:ModuleRows[$finished.Mod.Id] -State $state -Detail $detail -Mdl2Available $script:Mdl2
@@ -1341,7 +1595,7 @@ $btnCancel.Add_Click({
     foreach ($m in $script:Modules) {
         Set-KitModuleRowState -Row $script:ModuleRows[$m.Id] -State Pending -Detail '' -Mdl2Available $script:Mdl2
     }
-    $lblModulesEyebrow.Text = 'MODULES'
+    $lblModulesEyebrow.Text = 'ÉTAPES'
     # Même retour au repos que BtnNewRun : l'annulation ramène en préparation,
     # le titre ne doit pas rester figé sur le dernier « écoulé » du run avorté.
     $script:RunLabel = ''
@@ -1417,38 +1671,6 @@ $btnDelFiche.Add_Click({
     }
 })
 
-$btnApplyProfile.Add_Click({
-    # Interdit pendant un run : les contrôles piloteraient la queue en cours.
-    if ($script:Running) {
-        [System.Windows.Forms.MessageBox]::Show(
-            "Impossible d'appliquer un profil pendant l'exécution.",
-            "PC-Refresh-Kit", 'OK', 'Warning') | Out-Null
-        return
-    }
-    $sel = [string]$cmbProfile.SelectedItem
-    if ($sel -eq '') {
-        [System.Windows.Forms.MessageBox]::Show(
-            "Aucun profil sélectionné.", "PC-Refresh-Kit", 'OK', 'Information') | Out-Null
-        return
-    }
-    $profPath = Join-Path $script:Root "config\profiles\$sel.json"
-    if (-not (Test-Path $profPath)) {
-        [System.Windows.Forms.MessageBox]::Show(
-            "Fichier de profil introuvable : $profPath", "PC-Refresh-Kit", 'OK', 'Warning') | Out-Null
-        return
-    }
-    try {
-        $prof = Read-KitProfile -Path $profPath
-        Set-GuiFromProfile $prof
-        $script:AppliedProfileName = $sel
-        Update-KitActionSummary
-    } catch {
-        [System.Windows.Forms.MessageBox]::Show(
-            "Erreur lors de l'application du profil : $_",
-            "PC-Refresh-Kit", 'OK', 'Error') | Out-Null
-    }
-})
-
 $btnSaveProfile.Add_Click({
     # Demander le nom via le dialogue maison (charte Trimko, plus aucune dépendance tierce).
     $nom = Show-KitInputDialog -Owner $form -Title 'Enregistrer comme profil' -Prompt 'Nom du profil à enregistrer :'
@@ -1478,14 +1700,10 @@ $btnSaveProfile.Add_Click({
         $utf8NoBom = New-Object System.Text.UTF8Encoding $false
         [System.IO.File]::WriteAllText($tmpPath, $json, $utf8NoBom)
         Move-Item -Path $tmpPath -Destination $destPath -Force
-        # Rafraîchir la combobox et sélectionner le nouveau profil.
-        Update-ProfileComboBox
-        $idx = $cmbProfile.Items.IndexOf($nom)
-        if ($idx -ge 0) { $cmbProfile.SelectedIndex = $idx }
-        # L'état enregistré sous ce nom EST l'état courant de la GUI : le résumé doit
-        # l'annoncer, au lieu de rester sur le profil appliqué précédemment.
-        $script:AppliedProfileName = $nom
-        Update-KitActionSummary
+        # Rafraîchir la liste et sélectionner le nouveau profil : la sélection
+        # l'applique (état identique à l'écran courant, donc sans effet visible) et
+        # pose au passage le nom du profil dans le résumé et son aide.
+        Update-ProfileComboBox -Select $nom
         [System.Windows.Forms.MessageBox]::Show(
             "Profil `"$nom`" enregistré.", "PC-Refresh-Kit", 'OK', 'Information') | Out-Null
     } catch {
@@ -1505,19 +1723,35 @@ $script:BtnNewRun.Add_Click({
         $script:Tabs.TabPages.Remove($script:TabClose)
     }
     $script:Tabs.SelectedTab = $script:TabHelp
+    # Nouvelle intervention, nouveau contexte : l'épingle se relâche. Sans cela le
+    # bouton resterait allumé alors que la rubrique épinglée vient d'être effacée.
+    Set-KitHelpPinned $false
     # L'onglet revient au premier plan : il doit repartir de l'invite, pas de la
     # dernière rubrique survolée pendant le run précédent.
+    # Un survol différé armé moins de 350 ms avant le clic écraserait l'invite
+    # juste après sa remise en place : désarmer le minuteur AVANT de la reposer.
+    $script:HelpHoverTimer.Stop()
     $txtHelp.Text = $script:HelpPrompt
     foreach ($m in $script:Modules) {
         Set-KitModuleRowState -Row $script:ModuleRows[$m.Id] -State Pending -Detail '' -Mdl2Available $script:Mdl2
     }
-    $lblModulesEyebrow.Text = 'MODULES'
+    $lblModulesEyebrow.Text = 'ÉTAPES'
     # Le titre repart de sa forme de repos : sans cela la fenêtre reste
     # indéfiniment sur le « - terminé en 43:07 » du run précédent.
     $script:RunLabel = ''
     $form.Text = $script:TitleRest
     Set-KitPrepareEnabled -Enabled $true
     Set-KitActionPhase -Phase Prepare
+})
+
+# Échap libère l'épingle du panneau d'aide, et rien d'autre : hors épinglage, la
+# touche reste disponible pour les contrôles (fermeture d'une liste déroulante).
+$form.Add_KeyDown({
+    param($sender, $e)
+    if ($e.KeyCode -eq [System.Windows.Forms.Keys]::Escape -and $script:HelpPinned) {
+        Set-KitHelpPinned $false
+        $e.Handled = $true
+    }
 })
 
 $form.Add_FormClosing({
@@ -1538,7 +1772,7 @@ $form.Add_FormClosing({
 # Mode aperçu : rien ne doit pouvoir être lancé. Le titre porte déjà [APERÇU]
 # depuis le démarrage ($script:TitleRest), inutile de le réécrire ici.
 # Placé juste avant ShowDialog : $btnRun y existe quel que soit le layout en cours.
-# Le dry-run est coché d'office : un aperçu ne doit JAMAIS afficher un résumé
+# La simulation est cochée d'office : un aperçu ne doit JAMAIS afficher un résumé
 # « INTERVENTION RÉELLE » (ni dans les captures du README, ni sur un poste réel).
 if ($UiPreview) {
     $btnRun.Enabled = $false
@@ -1560,12 +1794,13 @@ function Get-KitPreviewData {
         )
         DoneWarn = '05'
         DoneSkip = '15'
-        # Le module en avertissement garde sa durée : le run réel écrit
-        # "<durée> - avertissement(s)" (Tick, branche 'Warn'), l'aperçu reproduit
-        # ce format exact plutôt qu'une forme à lui.
+        # L'étape en avertissement garde sa durée : le run réel écrit
+        # "<durée> - <n> avertissement" accordé au nombre (Tick, branche 'Warn'),
+        # l'aperçu reproduit ce format exact plutôt qu'une forme à lui. Un seul
+        # avertissement ici, comme dans le bilan de clôture : singulier.
         DoneDurations = @{
             '00'='00:45'; '01'='08:05'; '02'='11:30'; '03'='06:12'; '04'='01:08'
-            '05'='21:35 - avertissement(s)'; '06'='04:55'; '07'='07:40'; '08'='00:38'
+            '05'='21:35 - 1 avertissement'; '06'='04:55'; '07'='07:40'; '08'='00:38'
             '09'='00:22'; '11'='00:51'; '12'='00:14'; '13'='00:29'; '10'='00:18'
         }
     }
@@ -1575,6 +1810,11 @@ if ($UiPreview -and $PreviewPhase -ne 'Prepare') {
     $pv = Get-KitPreviewData
     $lblModulesEyebrow.Text = 'DÉROULÉ'
     Set-KitPrepareEnabled -Enabled $false
+    # Les deux aperçus simulent un run DÉJÀ lancé : leur onglet Journal existe donc,
+    # comme après le clic LANCER, sans quoi la capture montrerait une zone droite
+    # amputée. En phase Done, Show-KitClosePhase sélectionnera la page Clôture
+    # juste après, le Journal restant consultable à côté.
+    Show-KitJournalTab
     if ($PreviewPhase -eq 'Running') {
         foreach ($m in $script:Modules) {
             $preset = @($pv.Running | Where-Object { $_.Id -eq $m.Id })
@@ -1591,9 +1831,8 @@ if ($UiPreview -and $PreviewPhase -ne 'Prepare') {
         # montrer tel quel, sinon la capture du README annonce une échappatoire
         # grisée. Le handler ne fait rien ici, aucun run n'est en cours.
         $btnCancel.Enabled = $true
-        $script:ActionSummary.Text = 'Module 3/14 - 02 Antivirus - écoulé 12:40'
+        $script:ActionSummary.Text = 'Étape 3/14 - Antivirus - écoulé 12:40'
         Set-KitActionProgress -Current 2 -Total 14
-        $script:Tabs.SelectedTab = $script:TabLog
         foreach ($demo in @(
             '[14:11:58] [INFO] Module 02 Antivirus : démarrage',
             '[14:12:03] [OK] Avast désinstallé proprement',
@@ -1634,12 +1873,146 @@ if ($UiPreview -and $PreviewPhase -ne 'Prepare') {
     }
 }
 
-# Phase Prepare demandée EXPLICITEMENT (capture de la doc) : le panneau montre
-# une vraie rubrique du catalogue au lieu de l'invite, l'aide intégrée étant ce
-# que la capture doit donner à voir. -UiPreview seul et le démarrage normal
-# gardent l'invite : rien n'a encore été survolé.
-if ($UiPreview -and $PreviewPhase -eq 'Prepare' -and $PSBoundParameters.ContainsKey('PreviewPhase')) {
-    Show-KitHelp -Key 'module.02'
-}
+if ($SelfTest) {
+    # Parcours utilisateur scripté (spec v2.3 §8) : états LOGIQUES seulement
+    # (Checked, SelectedItem, Text, TabPages) - jamais Visible, qui vaut faux
+    # tant que la fenêtre n'est pas affichée.
+    # Le parcours ne sélectionne QUE des profils dont le JSON est présent
+    # (standard, senior) : un profil manquant ouvre une boîte modale dans
+    # Invoke-KitProfileSelection, donc un blocage sans fin en mode headless.
 
+    # Une erreur moteur (StrictMode, propriété renommée, clé absente) dans une
+    # assertion abandonnerait l'instruction sans appeler Assert-KitSelfTest :
+    # le trap transforme ce faux vert potentiel en échec franc.
+    trap { Write-Host "[SELFTEST] FAIL exception : $($_.Exception.Message)"; exit 1 }
+
+    $script:SelfTestFailures = 0
+    $script:SelfTestCount = 0
+    function Assert-KitSelfTest {
+        param([Parameter(Mandatory)][string]$Label, [Parameter(Mandatory)][bool]$Condition)
+        $script:SelfTestCount++
+        if ($Condition) { Write-Host "[SELFTEST] OK   $Label" }
+        else { Write-Host "[SELFTEST] FAIL $Label"; $script:SelfTestFailures++ }
+    }
+    # Read-KitProfile retombe silencieusement sur ses valeurs par défaut quand le
+    # fichier est absent ou son JSON illisible : cette fonction vérifie donc la
+    # cohérence entre la GUI et l'OBJET profil, jamais le contenu du fichier de
+    # profil lui-même (couvert par la suite Pester de lib/Common.ps1).
+    function Test-KitGuiMatchesProfile {
+        param([Parameter(Mandatory)][string]$ProfileName)
+        $p = Read-KitProfile -Path (Join-Path $script:Root "config\profiles\$ProfileName.json")
+        foreach ($m in $script:Modules) {
+            $want = $true
+            if ($p.Modules.ContainsKey($m.Id)) { $want = [bool]$p.Modules[$m.Id] }
+            if ($script:ModuleRows[$m.Id].CheckBox.Checked -ne $want) { return $false }
+        }
+        if ($cbRecycle.Checked  -ne [bool]$p.Recycle)  { return $false }
+        if ($cbWinOld.Checked   -ne [bool]$p.WinOld)   { return $false }
+        if ($cbCache.Checked    -ne [bool]$p.Cache)    { return $false }
+        if ($cbOneDrive.Checked -ne [bool]$p.OneDrive) { return $false }
+        if ($cbOem.Checked      -ne [bool]$p.Oem)      { return $false }
+        if ($cbNetReset.Checked -ne [bool]$p.NetReset) { return $false }
+        if ($rbKeep.Checked     -ne [bool]$p.KeepAdmin) { return $false }
+        if ($cbBackupData.Checked   -ne [bool]$p.BackupData)   { return $false }
+        if ($cbScanDefender.Checked -ne [bool]$p.ScanDefender) { return $false }
+        # Même correspondance que Set-GuiFromProfile (valeurs JSON anglaises ->
+        # index de la liste française), repli sur Standard compris : l'oracle
+        # doit se tromper exactement comme le code qu'il surveille.
+        $wantDebloat = @('Conservative', 'Standard', 'Aggressive').IndexOf([string]$p.Debloat)
+        if ($wantDebloat -lt 0) { $wantDebloat = 1 }
+        if ($cmbDebloat.SelectedIndex -ne $wantDebloat) { return $false }
+        return $true
+    }
+
+    # 1. État de démarrage : standard appliqué, pas de Journal, sentinelle en dernier.
+    Assert-KitSelfTest 'demarrage : selection standard' ([string]$cmbProfile.SelectedItem -eq 'standard')
+    Assert-KitSelfTest 'demarrage : cases conformes a standard.json' (Test-KitGuiMatchesProfile 'standard')
+    Assert-KitSelfTest 'demarrage : resume annonce le profil standard' ($script:ActionSummary.Text -match 'profil standard')
+    Assert-KitSelfTest 'demarrage : onglet Journal absent' (-not $script:Tabs.TabPages.Contains($script:TabLog))
+    Assert-KitSelfTest 'liste : sentinelle en derniere position' ([string]$cmbProfile.Items[$cmbProfile.Items.Count - 1] -eq $script:CustomProfileLabel)
+
+    # 2. Sélection senior : application immédiate.
+    $cmbProfile.SelectedItem = 'senior'
+    Assert-KitSelfTest 'selection senior : cases conformes a senior.json' (Test-KitGuiMatchesProfile 'senior')
+    Assert-KitSelfTest 'selection senior : resume a suivi' ($script:ActionSummary.Text -match 'profil senior')
+
+    # 3. Divergence par une case module : bascule (personnalisé), cases intactes.
+    $before = $script:ModuleRows['03'].CheckBox.Checked
+    $script:ModuleRows['03'].CheckBox.Checked = -not $before
+    Assert-KitSelfTest 'divergence module : etiquette (personnalise)' ([string]$cmbProfile.SelectedItem -eq $script:CustomProfileLabel)
+    Assert-KitSelfTest 'divergence module : resume personnalise' ($script:ActionSummary.Text -match 'profil personnalisé')
+    Assert-KitSelfTest 'divergence module : la case a bien change' ($script:ModuleRows['03'].CheckBox.Checked -eq (-not $before))
+
+    # 4. Retour standard : l'étiquette quitte la sentinelle et les cases reviennent.
+    $cmbProfile.SelectedItem = 'standard'
+    Assert-KitSelfTest 'retour standard : etiquette revenue a standard' ([string]$cmbProfile.SelectedItem -eq 'standard')
+    Assert-KitSelfTest 'retour standard : cases conformes' (Test-KitGuiMatchesProfile 'standard')
+
+    # 5. Divergence par une option sensible.
+    $cbRecycle.Checked = -not $cbRecycle.Checked
+    Assert-KitSelfTest 'divergence option : etiquette (personnalise)' ([string]$cmbProfile.SelectedItem -eq $script:CustomProfileLabel)
+
+    # 6. Étapes : numérotation 1..15 et labels français aux deux bouts.
+    Assert-KitSelfTest 'timeline : ligne 1 = Diagnostic' ($script:ModuleRows['00'].IdLabel.Text -eq '1' -and $script:ModuleRows['00'].NameLabel.Text -eq 'Diagnostic')
+    Assert-KitSelfTest 'timeline : ligne 15 = Rapport' ($script:ModuleRows['10'].IdLabel.Text -eq '15' -and $script:ModuleRows['10'].NameLabel.Text -eq 'Rapport')
+
+    # 6 bis. Correspondance sur TOUTE la liste, pas seulement aux deux bouts :
+    # chaque module porte son rang sur la timeline ET le titre de sa rubrique
+    # d'aide annonce ce même rang. Un module déplacé dans $script:Modules sans
+    # renumérotation de config\help.fr.json passe au rouge ici. Deux boucles
+    # fusionnées en une seule, agrégées en deux verdicts.
+    # Le rang est cherché avec une borne (?!\d) : sans elle, « Étape 15 » serait
+    # accepté au rang 1. Accès au titre via PSObject.Properties, comme
+    # Format-HelpPanel : StrictMode lève sur une propriété absente.
+    $posOk   = $true
+    $titreOk = $true
+    $pos     = 0
+    foreach ($m in $script:Modules) {
+        $pos++
+        if ($script:ModuleRows[$m.Id].IdLabel.Text -ne [string]$pos) { $posOk = $false }
+        $entree = Get-HelpEntry -Catalog $script:HelpCatalog -Key "module.$($m.Id)"
+        $titre  = if ($entree.PSObject.Properties['title']) { [string]$entree.title } else { '' }
+        if ($titre -notmatch "^Étape $pos(?!\d)") { $titreOk = $false }
+    }
+    Assert-KitSelfTest 'timeline : 15 positions conformes' ($posOk -and $pos -eq 15)
+    Assert-KitSelfTest 'aide : 15 titres Etape N conformes' ($titreOk -and $pos -eq 15)
+
+    # 7. Mode : le bouton principal suit la case Simulation.
+    $cbDryRun.Checked = $true
+    Assert-KitSelfTest 'mode : bouton LANCER LA SIMULATION' ($btnRun.Text -match 'SIMULATION')
+    $cbDryRun.Checked = $false
+    Assert-KitSelfTest 'mode : bouton LANCER L INTERVENTION' ($btnRun.Text -match "INTERVENTION")
+
+    # 8. Journal : apparaît et prend le focus via Show-KitJournalTab.
+    Show-KitJournalTab
+    Assert-KitSelfTest 'journal : onglet present apres lancement simule' ($script:Tabs.TabPages.Contains($script:TabLog))
+    Assert-KitSelfTest 'journal : onglet selectionne' ($script:Tabs.SelectedTab -eq $script:TabLog)
+
+    # 9. Épingle du panneau d'aide : machine à états vérifiée sur la vraie
+    # bascule, pas sur une copie du drapeau. Set-KitHelpPinned n'écrit que du
+    # texte, des couleurs et arrête le minuteur : rien qui exige une fenêtre
+    # affichée, donc sûr en mode headless.
+    Set-KitHelpPinned $true
+    Assert-KitSelfTest 'aide : bascule epinglee' ($script:HelpPinned)
+    Assert-KitSelfTest 'aide : epinglage ignore les survols' ((Get-KitHelpDecision -Source Hover -Pinned $script:HelpPinned -Frozen $false) -eq 'Ignore')
+    Set-KitHelpPinned $false
+    Assert-KitSelfTest 'aide : desepinglage restaure le differe' ((Get-KitHelpDecision -Source Hover -Pinned $script:HelpPinned -Frozen $false) -eq 'Defer')
+
+    if ($script:SelfTestFailures -gt 0) {
+        Write-Host "[SELFTEST] ECHEC : $script:SelfTestFailures assertion(s)"
+        exit 1
+    }
+    # Ceinture et bretelles : le trap couvre les erreurs moteur, ce plancher
+    # couvre tout ce qui ferait sauter des assertions sans lever (retour anticipé,
+    # bloc supprimé par mégarde). Le nombre attendu se met à jour à la main quand
+    # une assertion est ajoutée ; la ligne de succès, elle, reste dynamique.
+    if ($script:SelfTestCount -lt 24) {
+        Write-Host "[SELFTEST] ECHEC : $script:SelfTestCount assertion(s) executee(s) sur 24 attendues"
+        exit 1
+    }
+    # Compte tenu à l'exécution : ajouter une assertion ne peut pas laisser
+    # traîner un total faux dans la ligne de succès.
+    Write-Host "[SELFTEST] SUCCES : parcours complet ($script:SelfTestCount assertions)"
+    exit 0
+}
 [void]$form.ShowDialog()

@@ -2,7 +2,7 @@
   "version": 1,
   "entries": {
     "module.00": {
-      "title": "00 Diagnostic - état des lieux",
+      "title": "Étape 1 - Diagnostic : état des lieux",
       "short": "Lit la configuration de la machine et fige un état avant intervention. Ne modifie rien.",
       "what": "Relève le modèle, le processeur, la mémoire, le type et la santé des disques (SMART), le chiffrement BitLocker, l'antivirus présent, les programmes lancés au démarrage et l'espace libre. Ces valeurs servent de point de comparaison au rapport final.",
       "protects": "Aucune écriture sur la machine : ce module lit uniquement.",
@@ -11,7 +11,7 @@
       "whenNot": "Jamais. C'est lui qui permet de chiffrer le résultat de l'intervention."
     },
     "module.01": {
-      "title": "01 Backup - filet de sécurité",
+      "title": "Étape 2 - Sauvegarde : filet de sécurité",
       "short": "Crée un point de restauration Windows, et copie les dossiers personnels si un disque externe est branché.",
       "what": "Crée un point de restauration système, puis copie Documents, Bureau, Images, Téléchargements, Vidéos et Musique vers le disque externe branché.",
       "protects": "Aucun fichier d'origine n'est déplacé ni supprimé : la copie est une copie.",
@@ -20,7 +20,7 @@
       "whenNot": "Jamais sur une machine qui contient des données. Sans disque externe, seul le point de restauration est créé : les fichiers personnels ne sont pas copiés."
     },
     "module.02": {
-      "title": "02 Antivirus - retour à Windows Defender",
+      "title": "Étape 3 - Antivirus : retour à Windows Defender",
       "short": "Retire Avast et remet Windows Defender en service. Les autres antivirus tiers sont signalés, à désinstaller à la main.",
       "what": "Désinstalle Avast proprement : uninstaller natif, puis outil Avast Clear si des résidus subsistent. Réactive ensuite Windows Defender avec la protection en temps réel, la protection cloud et l'anti-PUA, et lance une analyse si l'option est cochée. Si un autre antivirus tiers est détecté, Norton ou McAfee par exemple, le module le signale dans le journal et n'y touche pas : Windows Defender reste alors passif tant que cet antivirus n'est pas retiré à la main.",
       "protects": "Un seul antivirus doit tourner à la fois : deux moteurs concurrents se ralentissent et se neutralisent. Aucun antivirus autre qu'Avast n'est désinstallé sans décision de l'opérateur.",
@@ -29,7 +29,7 @@
       "whenNot": "Si un abonnement payant est en cours et que le propriétaire souhaite le garder. Le kit désinstalle le logiciel mais ne résilie jamais l'abonnement : la facturation continue tant que le propriétaire ne l'annule pas."
     },
     "module.03": {
-      "title": "03 Debloat - applications préinstallées",
+      "title": "Étape 4 - Désencombrement : applications préinstallées",
       "short": "Retire les applications préinstallées inutiles, en s'appuyant sur une liste de protection.",
       "what": "Supprime les applications du Microsoft Store et du constructeur qui n'ont jamais servi : jeux de démonstration, applications Bing, suites d'essai, utilitaires de marque. La politique de débloatage choisie décide du sort des applications douteuses.",
       "protects": "Le Microsoft Store, Defender, winget, les pilotes graphiques et les jeux Game Pass ne sont jamais retirés. En politique Standard, une application utilisée dans les 90 derniers jours est conservée.",
@@ -38,7 +38,7 @@
       "whenNot": "Sur un poste d'entreprise où des applications de marque sont imposées par le service informatique."
     },
     "module.04": {
-      "title": "04 Privacy - collecte de données",
+      "title": "Étape 5 - Confidentialité : collecte de données",
       "short": "Réduit la télémétrie de Windows et installe une protection qui survit aux mises à jour.",
       "what": "Coupe la remontée de données de diagnostic, l'identifiant publicitaire, les suggestions et les fonctions de collecte associées (Copilot, Widgets, Recall). Installe TelemetryGuard, qui réapplique ces réglages après chaque mise à jour de Windows au moyen de deux tâches planifiées.",
       "protects": "SmartScreen, qui bloque les téléchargements dangereux, est conservé : il ne fait pas partie de la télémétrie.",
@@ -47,7 +47,7 @@
       "whenNot": "Sur un poste dont l'entreprise pilote les réglages de confidentialité par stratégie de groupe."
     },
     "module.05": {
-      "title": "05 Updates - mises à jour",
+      "title": "Étape 6 - Mises à jour",
       "short": "Installe les mises à jour de Windows et de tous les logiciels connus de winget.",
       "what": "Recherche et installe les mises à jour Windows en attente, puis met à jour l'ensemble des logiciels installés reconnus par winget.",
       "protects": "Si la machine est hors ligne, le module s'arrête proprement sans erreur au lieu de tourner à vide.",
@@ -56,16 +56,16 @@
       "whenNot": "Si le temps d'intervention est court : c'est le module le plus long et il demande souvent un redémarrage."
     },
     "module.06": {
-      "title": "06 Software - socle logiciel",
+      "title": "Étape 7 - Logiciels : socle logiciel",
       "short": "Installe le socle utile : navigateur, archiveur, lecteur PDF, lecteur multimédia, bureautique.",
       "what": "Installe la liste définie dans config\\apps.json : Firefox, 7-Zip, VLC, Sumatra PDF et LibreOffice par défaut. Les entrées marquées facultatives demandent confirmation une par une.",
       "protects": "Une application déjà présente n'est pas réinstallée.",
       "reversible": "Oui, chaque logiciel se désinstalle normalement depuis Applications installées.",
       "duration": "10 à 20 minutes, connexion internet requise",
-      "whenNot": "Si le propriétaire utilise déjà d'autres équivalents et ne veut pas de doublons. Adapter config\\apps.json plutôt que de sauter le module."
+      "whenNot": "Si le propriétaire utilise déjà d'autres équivalents et ne veut pas de doublons. Adapter config\\apps.json plutôt que de sauter l'étape."
     },
     "module.07": {
-      "title": "07 Cleanup - nettoyage et réparation",
+      "title": "Étape 8 - Nettoyage et réparation",
       "short": "Vide les fichiers temporaires, répare les composants système et optimise le disque.",
       "what": "Supprime les fichiers temporaires et les caches, exécute DISM et SFC pour réparer les composants de Windows, puis optimise le disque : défragmentation sur disque mécanique, TRIM sur disque SSD.",
       "protects": "Le type de disque est détecté avant l'optimisation : aucun SSD n'est jamais défragmenté. DISM est ignoré si moins de 8 Go sont libres, plutôt que d'échouer à mi-parcours.",
@@ -74,7 +74,7 @@
       "whenNot": "Tant qu'un disque externe de sauvegarde est branché : le débrancher d'abord, sinon l'optimisation le traite aussi."
     },
     "module.08": {
-      "title": "08 Accounts - comptes et droits",
+      "title": "Étape 9 - Comptes et droits",
       "short": "Crée un compte administrateur dédié et bascule le compte quotidien en droits standard.",
       "what": "Crée le compte Admin-Local avec une phrase de passe mémorisable, l'ajoute au groupe Administrateurs, puis rétrograde le compte quotidien en compte standard. La phrase de passe est écrite dans la fiche PC.",
       "protects": "Un contrôle interdit l'opération s'il ne resterait aucun administrateur actif : impossible de se verrouiller hors de la machine.",
@@ -83,7 +83,7 @@
       "whenNot": "Sur un poste géré par un service informatique, ou si le propriétaire installe des logiciels tous les jours et refuse de saisir un mot de passe à chaque fois. Dans ce cas, choisir Garder admin."
     },
     "module.09": {
-      "title": "09 Comfort - confort d'utilisation",
+      "title": "Étape 10 - Confort d'utilisation",
       "short": "Rend Windows plus lisible : extensions de fichiers visibles, suggestions et publicités coupées.",
       "what": "Affiche les extensions de fichiers, coupe les suggestions de l'écran de verrouillage et du menu Démarrer, désactive les publicités intégrées. Désinstalle OneDrive si l'option correspondante est cochée.",
       "protects": "Les fichiers déjà synchronisés avec OneDrive restent sur le disque local.",
@@ -92,52 +92,52 @@
       "whenNot": "Si le propriétaire utilise activement OneDrive, laisser l'option OneDrive décochée. Le reste du module ne présente aucun risque."
     },
     "module.10": {
-      "title": "10 Report - rapport d'intervention",
+      "title": "Étape 15 - Rapport d'intervention",
       "short": "Produit le rapport avant et après, ainsi que la note à remettre à l'utilisateur.",
-      "what": "Compare l'état relevé par le module 00 à l'état final et chiffre le résultat : espace disque récupéré, programmes au démarrage, applications retirées ou ajoutées, temps de démarrage. Produit un rapport HTML présentable et un rapport texte, plus une note en langage clair pour l'utilisateur.",
+      "what": "Compare l'état relevé par l'étape Diagnostic à l'état final et chiffre le résultat : espace disque récupéré, programmes au démarrage, applications retirées ou ajoutées, temps de démarrage. Produit un rapport HTML présentable et un rapport texte, plus une note en langage clair pour l'utilisateur.",
       "protects": "Le mot de passe administrateur n'est jamais recopié dans le rapport : il n'existe que dans la fiche PC.",
       "reversible": "Sans objet, le module écrit uniquement des fichiers dans runtime.",
       "duration": "1 minute",
       "whenNot": "Jamais. C'est le livrable de l'intervention."
     },
     "module.11": {
-      "title": "11 DeepClean - résidus de désinstallation",
+      "title": "Étape 11 - Nettoyage profond : résidus de désinstallation",
       "short": "Supprime les raccourcis morts et les dossiers laissés par les applications retirées.",
-      "what": "Parcourt le menu Démarrer et supprime les raccourcis dont la cible n'existe plus, puis supprime les dossiers résiduels des applications désinstallées, d'après une liste blanche et le journal du module 03.",
+      "what": "Parcourt le menu Démarrer et supprime les raccourcis dont la cible n'existe plus, puis supprime les dossiers résiduels des applications désinstallées, d'après une liste blanche et le journal de l'étape Désencombrement.",
       "protects": "Aucune opération sur le registre. Seuls les sous-dossiers des emplacements d'installation connus peuvent être supprimés, jamais leur racine.",
       "reversible": "Non, mais un raccourci se recrée et un dossier résiduel ne contient plus de programme.",
       "duration": "2 à 5 minutes",
       "whenNot": "Si la machine utilise des lecteurs réseau déconnectés au moment de l'intervention : leurs raccourcis pourraient être vus comme morts."
     },
     "module.12": {
-      "title": "12 Startup - programmes au démarrage",
+      "title": "Étape 12 - Démarrage : programmes au démarrage",
       "short": "Désactive, de façon réversible, les programmes qui se lancent inutilement au démarrage.",
       "what": "Désactive les entrées figurant dans la liste noire config\\startup-blacklist.json : mises à jour Adobe et Java, assistants iTunes et QuickTime, lanceurs de jeux, agents de synchronisation. Trois mécanismes selon le cas : marquage dans l'onglet Démarrage, déplacement du raccourci vers un dossier de sauvegarde, désactivation de la tâche planifiée.",
       "protects": "Rien hors liste noire n'est touché, et rien n'est jamais supprimé. Le profil d'intervention peut préserver certaines entrées, par exemple les lanceurs de jeux avec le profil gamer.",
-      "reversible": "Oui, entièrement, par le module 14 ou par le Gestionnaire des tâches, onglet Démarrage.",
+      "reversible": "Oui, entièrement, par l'annulation (Lancer-Annuler.bat) ou par le Gestionnaire des tâches, onglet Démarrage.",
       "duration": "1 à 3 minutes",
-      "whenNot": "Si le propriétaire tient à ce que ses lanceurs démarrent avec Windows. Préférer alors le profil qui les préserve plutôt que de sauter le module."
+      "whenNot": "Si le propriétaire tient à ce que ses lanceurs démarrent avec Windows. Préférer alors le profil qui les préserve plutôt que de sauter l'étape."
     },
     "module.13": {
-      "title": "13 BrowserPUP - détournements de navigateur",
+      "title": "Étape 13 - Navigateurs : détournements de navigateur",
       "short": "Retire les moteurs de recherche, pages d'accueil et extensions imposés à Chrome et Edge.",
       "what": "Supprime les stratégies de registre qui forcent un moteur de recherche, une page d'accueil, une page de nouvel onglet ou une extension, quand elles figurent dans la liste des indésirables. Les autres extensions imposées sont seulement signalées dans le journal.",
       "protects": "La clé de registre concernée est exportée en fichier .reg avant toute suppression. Si l'export échoue, la suppression est annulée.",
-      "reversible": "Oui, par le module 14 ou par un double-clic sur le fichier .reg de sauvegarde.",
+      "reversible": "Oui, par l'annulation (Lancer-Annuler.bat) ou par un double-clic sur le fichier .reg de sauvegarde.",
       "duration": "1 à 2 minutes",
       "whenNot": "Sur un poste d'entreprise : les stratégies de navigateur y sont légitimes et posées par le service informatique."
     },
     "module.14": {
       "title": "14 Undo - annulation",
       "short": "Annule les modifications réversibles du dernier passage, dans l'ordre inverse.",
-      "what": "Relit le manifeste écrit par les modules 12 et 13 et défait chaque action : réactivation des programmes au démarrage, remise en place des raccourcis, réactivation des tâches planifiées, réimport des clés de registre des navigateurs.",
+      "what": "Relit le manifeste écrit par les étapes Démarrage et Navigateurs et défait chaque action : réactivation des programmes au démarrage, remise en place des raccourcis, réactivation des tâches planifiées, réimport des clés de registre des navigateurs.",
       "protects": "Ce module ne supprime jamais rien, il restaure. Il accepte le mode simulation pour voir ce qui serait annulé.",
       "reversible": "Sans objet, c'est lui l'annulation.",
       "duration": "1 minute",
       "whenNot": "Ce module ne fait pas partie de la file d'exécution : il se lance à la demande par Lancer-Annuler.bat."
     },
     "module.15": {
-      "title": "15 Network - réinitialisation réseau",
+      "title": "Étape 14 - Réseau : réinitialisation réseau",
       "short": "Remet à zéro la configuration réseau. À réserver aux machines dont la connexion est défectueuse.",
       "what": "Réinitialise la pile TCP/IP, le catalogue Winsock et le cache DNS.",
       "protects": "Aucun mot de passe Wi-Fi n'est effacé.",
@@ -147,7 +147,7 @@
     },
     "option.backupdata": {
       "title": "Sauvegarder les données utilisateur",
-      "short": "Copie les dossiers personnels vers le disque externe branché, pendant le module 01.",
+      "short": "Copie les dossiers personnels vers le disque externe branché, pendant l'étape Sauvegarde.",
       "what": "Copie Documents, Bureau, Images, Téléchargements, Vidéos et Musique vers le disque externe. Sans disque externe branché, l'option est sans effet et seul le point de restauration est créé.",
       "protects": "Les données d'application, comme les messageries locales ou les mots de passe des navigateurs, ne sont pas copiées : elles se sauvegardent à la main si elles comptent.",
       "reversible": "Sans objet, il s'agit d'une copie.",
@@ -157,7 +157,7 @@
     "option.scandefender": {
       "title": "Scanner avec Defender après bascule",
       "short": "Lance une analyse rapide après la remise en service de Windows Defender.",
-      "what": "Met à jour les signatures Defender puis déclenche une analyse rapide à la fin du module 02. Les menaces trouvées pendant cette analyse sont listées dans le journal.",
+      "what": "Met à jour les signatures Defender puis déclenche une analyse rapide à la fin de l'étape Antivirus. Les menaces trouvées pendant cette analyse sont listées dans le journal.",
       "reversible": "Sans objet, une analyse ne modifie rien tant qu'aucune menace n'est trouvée.",
       "duration": "5 à 15 minutes, et l'analyse se poursuit en tâche de fond au-delà de 10 minutes",
       "whenNot": "Si le temps manque et que la machine ne présente aucun signe d'infection."
@@ -165,7 +165,7 @@
     "option.recycle": {
       "title": "Vider la corbeille",
       "short": "Vide définitivement la corbeille de tous les disques.",
-      "what": "Supprime le contenu de la corbeille pendant le module 07.",
+      "what": "Supprime le contenu de la corbeille pendant l'étape Nettoyage.",
       "reversible": "Non. Un fichier supprimé de la corbeille ne se récupère plus simplement.",
       "duration": "Quelques secondes",
       "whenNot": "Sans avoir demandé au propriétaire s'il a quelque chose à récupérer dans sa corbeille. Décochée par défaut pour cette raison, et à laisser décochée tant qu'un disque externe de sauvegarde est branché."
@@ -181,7 +181,7 @@
     "option.cache": {
       "title": "Vider les caches des navigateurs",
       "short": "Vide les fichiers temporaires de Chrome et Edge, tous profils confondus.",
-      "what": "Supprime les caches des navigateurs pendant le module 07.",
+      "what": "Supprime les caches des navigateurs pendant l'étape Nettoyage.",
       "protects": "Les favoris et les mots de passe enregistrés ne sont pas touchés.",
       "reversible": "Non, mais un cache se reconstitue seul à la navigation.",
       "duration": "1 à 3 minutes",
@@ -190,7 +190,7 @@
     "option.onedrive": {
       "title": "Désinstaller OneDrive",
       "short": "Retire OneDrive, bloque sa réinstallation automatique et coupe ses rappels.",
-      "what": "Désinstalle OneDrive pendant le module 09 et empêche son retour lors des mises à jour de Windows.",
+      "what": "Désinstalle OneDrive pendant l'étape Confort et empêche son retour lors des mises à jour de Windows.",
       "protects": "Les fichiers déjà présents sur le disque restent en place. Seule la synchronisation cesse.",
       "reversible": "Oui, OneDrive se réinstalle depuis le site de Microsoft.",
       "duration": "2 minutes",
@@ -199,7 +199,7 @@
     "option.oem": {
       "title": "Debloat constructeur (OEM)",
       "short": "Retire les utilitaires du fabricant de la machine, au-delà des applications du Store.",
-      "what": "Désinstalle les logiciels de marque du constructeur d'après les fiches de config\\oem-bloat, pendant le module 03. Fiches fournies actuellement : ASUS. Sur les autres marques, le module détecte le constructeur et le journalise sans rien retirer.",
+      "what": "Désinstalle les logiciels de marque du constructeur d'après les fiches de config\\oem-bloat, pendant l'étape Désencombrement. Fiches fournies actuellement : ASUS. Sur les autres marques, le module détecte le constructeur et le journalise sans rien retirer.",
       "protects": "Les utilitaires nécessaires au matériel, comme la gestion du pavé tactile ou des profils de ventilation, figurent en liste protégée.",
       "reversible": "Oui, ces logiciels se retéléchargent sur le site du constructeur.",
       "duration": "5 à 10 minutes",
@@ -207,17 +207,17 @@
     },
     "option.netreset": {
       "title": "Réinitialiser le réseau",
-      "short": "Active le module 15. À réserver aux machines dont la connexion est défectueuse.",
+      "short": "Active l'étape Réseau. À réserver aux machines dont la connexion est défectueuse.",
       "what": "Réinitialise la pile TCP/IP, Winsock et le cache DNS.",
       "reversible": "Non sans intervention manuelle, et un redémarrage est nécessaire ensuite.",
       "duration": "1 minute, plus un redémarrage",
       "whenNot": "Sur une connexion qui fonctionne. Décochée par défaut."
     },
     "option.dryrun": {
-      "title": "Mode dry-run (simulation)",
+      "title": "Simulation",
       "short": "Exécute tout le déroulé sans rien modifier. À utiliser avant tout passage réel.",
-      "what": "Chaque module annonce ce qu'il ferait, dans le journal, sans l'exécuter. La barre de titre affiche DRY-RUN pour lever toute ambiguïté.",
-      "protects": "Aucune écriture sur la machine, quel que soit le module coché.",
+      "what": "En simulation, chaque étape décrit dans le journal ce qu'elle ferait, sans rien modifier sur la machine. Décochée, l'intervention est réelle : les actions sont appliquées. Le titre de la fenêtre porte le préfixe [SIMULATION] ou [INTERVENTION RÉELLE] pendant toute l'intervention.",
+      "protects": "Aucune écriture sur la machine, quelle que soit l'étape cochée.",
       "reversible": "Sans objet, rien n'est modifié.",
       "duration": "3 à 5 minutes pour le déroulé complet",
       "whenNot": "Jamais avant une première intervention sur une machine inconnue, ni avant une démonstration."
@@ -261,61 +261,70 @@
       "short": "Le compte quotidien reste administrateur, protégé par la confirmation Windows.",
       "what": "Aucun compte n'est créé et aucun mot de passe n'est à retenir. Chaque installation demande une simple confirmation Oui ou Non.",
       "protects": "La confirmation Windows est durcie pour rester affichée sur chaque élévation.",
-      "reversible": "Oui, le module 08 peut être relancé plus tard dans l'autre mode.",
+      "reversible": "Oui, l'étape Comptes peut être relancée plus tard dans l'autre mode.",
       "duration": "Immédiat",
       "whenNot": "Sur la machine d'une personne peu à l'aise, qui cliquerait Oui à toutes les demandes."
     },
     "profile.standard": {
       "title": "Profil standard",
       "short": "Remise en état complète et équilibrée. C'est le profil à utiliser par défaut.",
-      "what": "Tous les modules actifs, politique de débloatage Standard, compte quotidien passé en standard, pas de réinitialisation réseau (la case reste à cocher au besoin).",
-      "reversible": "Sans objet, un profil ne fait que positionner les cases de l'interface.",
+      "what": "Sélectionner ce profil coche immédiatement toutes les étapes, choisit la politique de débloatage Standard, passe le compte quotidien en standard et laisse la réinitialisation réseau de côté (la case reste à cocher au besoin).",
+      "reversible": "Oui : choisir un autre profil ou modifier une case reprend la main. Aucun réglage n'est écrit sur le disque.",
       "duration": "Sans effet, il n'exécute rien",
       "whenNot": "Sur une machine de jeu ou pour une personne âgée : les profils dédiés sont mieux adaptés."
     },
     "profile.senior": {
       "title": "Profil senior",
       "short": "Machine la plus simple possible, sans rien retirer de ce qui pourrait encore servir.",
-      "what": "Politique de débloatage conservatrice, aucun démarrage automatique préservé pour un démarrage aussi léger que possible, compte quotidien passé en standard, pas de réinitialisation réseau.",
+      "what": "Sélectionner ce profil choisit immédiatement la politique de débloatage conservatrice, ne préserve aucun démarrage automatique pour un démarrage aussi léger que possible, passe le compte quotidien en standard et laisse la réinitialisation réseau de côté.",
       "protects": "La politique conservatrice évite de faire disparaître une icône connue du propriétaire.",
-      "reversible": "Sans objet, un profil ne fait que positionner les cases de l'interface.",
+      "reversible": "Oui : choisir un autre profil ou modifier une case reprend la main. Aucun réglage n'est écrit sur le disque.",
       "duration": "Sans effet, il n'exécute rien",
       "whenNot": "Sur une machine dont le propriétaire veut repartir de zéro."
     },
     "profile.gamer": {
       "title": "Profil gamer",
       "short": "Ne gêne pas une machine de jeu : lanceurs préservés au démarrage et compte administrateur conservé.",
-      "what": "Steam, Epic Games Launcher, Discord, GeForce et Battle.net restent lancés au démarrage, la politique de débloatage est conservatrice pour ne pas retirer un outil de jeu saisonnier, le compte reste administrateur pour installer sans friction, et la réinitialisation réseau est écartée.",
+      "what": "Sélectionner ce profil préserve immédiatement Steam, Epic Games Launcher, Discord, GeForce et Battle.net au démarrage, choisit la politique de débloatage conservatrice pour ne pas retirer un outil de jeu saisonnier, garde le compte administrateur pour installer sans friction et écarte la réinitialisation réseau.",
       "protects": "Les jeux Game Pass sont de toute façon protégés, quel que soit le profil.",
-      "reversible": "Sans objet, un profil ne fait que positionner les cases de l'interface.",
+      "reversible": "Oui : choisir un autre profil ou modifier une case reprend la main. Aucun réglage n'est écrit sur le disque.",
       "duration": "Sans effet, il n'exécute rien",
       "whenNot": "Sur un poste de travail ordinaire : le profil standard sécurise davantage le compte."
     },
+    "profile.custom": {
+      "title": "Profil (personnalisé)",
+      "short": "Votre sélection actuelle : l'écran ne correspond plus mot pour mot à un profil enregistré.",
+      "what": "Cette entrée apparaît dès que vous modifiez une case après avoir choisi un profil. Vous n'avez pas à la choisir : elle se sélectionne toute seule. Utilisez Enregistrer comme profil pour conserver cette sélection sous un nom.",
+      "protects": "Rien n'est écrit sur le disque : c'est un simple état de l'écran.",
+      "reversible": "Oui : choisir un profil de la liste reprend la main immédiatement.",
+      "duration": "Sans effet, il n'exécute rien",
+      "whenNot": "Sans objet, cette entrée ne se choisit pas."
+    },
     "action.run": {
       "title": "LANCER",
-      "short": "Démarre les modules cochés, dans l'ordre, en affichant le journal en direct.",
-      "what": "Bascule l'affichage sur l'onglet Journal et enchaîne les modules. Le titre de la fenêtre rappelle en permanence s'il s'agit d'une simulation ou d'un passage réel.",
+      "short": "Démarre les étapes cochées, dans l'ordre, en affichant le journal en direct.",
+      "what": "Bascule l'affichage sur l'onglet Journal et enchaîne les étapes. Le titre de la fenêtre rappelle en permanence s'il s'agit d'une simulation ou d'un passage réel.",
       "reversible": "L'exécution peut être arrêtée à tout moment par le bouton Annuler.",
       "duration": "1 h 30 à 2 h 30 pour un passage complet",
       "whenNot": "Avant d'avoir vérifié le mode affiché dans la barre de titre."
     },
     "action.cancel": {
       "title": "Annuler",
-      "short": "Arrête proprement le module en cours et vide la file des modules restants.",
-      "what": "Le module en cours est interrompu et la fenêtre reste ouverte. La machine reste dans l'état atteint.",
+      "short": "Arrête proprement l'étape en cours et vide la file des étapes restantes.",
+      "what": "L'étape en cours est interrompue et la fenêtre reste ouverte. La machine reste dans l'état atteint.",
       "protects": "Le kit ne supprimant aucun fichier personnel et créant un point de restauration au départ, une interruption ne laisse pas la machine dans un état dégradé.",
       "reversible": "Les actions déjà faites restent faites. Lancer-Annuler.bat défait celles qui sont réversibles.",
       "duration": "Immédiat",
-      "whenNot": "Pendant le module 07 si DISM est en cours : le laisser finir évite de relancer une réparation longue."
+      "whenNot": "Pendant l'étape Nettoyage si DISM est en cours : le laisser finir évite de relancer une réparation longue."
     },
     "action.report": {
       "title": "Ouvrir le rapport",
-      "short": "Ouvre le rapport d'intervention produit par le module 10.",
+      "short": "Ouvre le rapport d'intervention produit par l'étape Rapport.",
       "what": "Ouvre la version HTML dans le navigateur, c'est le document présentable à remettre. La version texte s'ouvre dans l'éditeur si le HTML est absent.",
       "protects": "Le rapport ne contient pas le mot de passe administrateur.",
       "reversible": "Sans objet, le bouton n'ouvre qu'un fichier.",
       "duration": "Immédiat",
-      "whenNot": "Avant la fin du module 10 : le bouton reste inactif jusque-là."
+      "whenNot": "Avant la fin de l'étape Rapport : le bouton reste inactif jusque-là."
     },
     "action.delfiche": {
       "title": "Supprimer la fiche PC de la clé",
@@ -329,19 +338,11 @@
     "action.copypassword": {
       "title": "Copier le mot de passe",
       "short": "Copie la phrase de passe du compte Admin-Local dans le presse-papiers.",
-      "what": "Devient actif une fois le module 08 passé, quand le compte administrateur existe et que sa phrase de passe est connue.",
+      "what": "Devient actif une fois l'étape Comptes passée, quand le compte administrateur existe et que sa phrase de passe est connue.",
       "protects": "Le presse-papiers est volatil : la phrase de passe reste par ailleurs dans la fiche PC, seul endroit où elle est écrite.",
       "reversible": "Sans objet, le bouton ne fait que copier.",
       "duration": "Immédiat",
       "whenNot": "Sur une machine où un gestionnaire de presse-papiers conserve l'historique des copies."
-    },
-    "action.applyprofile": {
-      "title": "Appliquer un profil",
-      "short": "Positionne toutes les cases de l'interface selon le profil sélectionné. N'exécute rien.",
-      "what": "Charge le fichier de profil et coche ou décoche modules et options en conséquence. Les réglages restent modifiables ensuite.",
-      "reversible": "Oui, en appliquant un autre profil ou en modifiant les cases à la main.",
-      "duration": "Immédiat",
-      "whenNot": "Pendant une exécution : le bouton refuse d'agir pour ne pas modifier une file en cours."
     },
     "action.saveprofile": {
       "title": "Enregistrer comme profil",
@@ -354,7 +355,7 @@
     "action.pwdshow": {
       "title": "Afficher / Masquer la passphrase",
       "short": "Affiche temporairement la passphrase masquée du compte Admin-Local, pour la noter ou la dicter au propriétaire.",
-      "what": "Sur la page Clôture, la passphrase reste masquée par défaut. Ce bouton bascule l'affichage en clair, un second appui la masque de nouveau. Il reste inactif tant que le module 08 n'a pas créé le compte Admin-Local.",
+      "what": "Sur la page Clôture, la passphrase reste masquée par défaut. Ce bouton bascule l'affichage en clair, un second appui la masque de nouveau. Il reste inactif tant que l'étape Comptes n'a pas créé le compte Admin-Local.",
       "protects": "La fiche PC reste la seule trace écrite de la passphrase : le rapport ne la contient jamais.",
       "reversible": "Sans objet, le bouton ne change que l'affichage.",
       "duration": "Immédiat",
@@ -363,7 +364,7 @@
     "action.newrun": {
       "title": "Préparer une nouvelle intervention",
       "short": "Referme la clôture et rend la main sur les réglages pour relancer un passage.",
-      "what": "Retire l'onglet Clôture, réaffiche les cartes de préparation, déverrouille modules et options et revient sur l'onglet Aide. Les états du run précédent quittent la timeline : chaque module y repasse en attente.",
+      "what": "Retire l'onglet Clôture, réaffiche les cartes de préparation, déverrouille étapes et options et revient sur l'onglet Aide. Les états du run précédent quittent la timeline : chaque étape y repasse en attente.",
       "protects": "Rien n'est effacé sur la clé : le rapport, le journal et la fiche PC du passage précédent restent en place.",
       "reversible": "Sans objet, le bouton ne touche qu'à l'affichage.",
       "duration": "Immédiat",

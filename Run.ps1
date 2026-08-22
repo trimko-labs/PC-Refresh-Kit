@@ -117,7 +117,7 @@ function Show-Menu {
         Write-Host ""
         Write-Host "======================================================" -ForegroundColor Cyan
         Write-Host "  PC-REFRESH-KIT - Menu principal" -ForegroundColor Cyan
-        if ($WhatIf) { Write-Host "  [MODE DRY-RUN ACTIF - aucune modification réelle]" -ForegroundColor Yellow }
+        if ($WhatIf) { Write-Host "  [SIMULATION ACTIVE - aucune modification]" -ForegroundColor Yellow }
         Write-Host "======================================================" -ForegroundColor Cyan
         Write-Host ""
         foreach ($mod in $modules) {

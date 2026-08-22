@@ -26,15 +26,15 @@ Regle d'or : **lancer le kit depuis la session du proprietaire du PC** (son comp
 
 L'interface suit le geste de l'intervention et se lit toujours de la même façon :
 
-- **Préparer** : profil d'intervention et modules à gauche, réglages au centre, actions sensibles à droite. Survoler un élément affiche son explication dans l'onglet **Aide**. La barre d'action en bas résume ce qui sera fait et porte le bouton LANCER L'INTERVENTION.
-- **Exécuter** : la colonne de gauche devient le déroulé (chaque module affiche son état et sa durée), l'onglet **Journal** défile, la barre du bas affiche la progression et le bouton Annuler.
+- **Préparer** : profil d'intervention et étapes 1 à 15 à gauche, réglages au centre, actions sensibles à droite. Le profil standard est appliqué à l'ouverture, et choisir un autre profil applique ses cases aussitôt. Survoler un élément affiche son explication dans l'onglet **Aide**. La barre d'action en bas résume ce qui sera fait et porte le bouton principal : LANCER L'INTERVENTION, ou LANCER LA SIMULATION quand la case Simulation est cochée.
+- **Exécuter** : la colonne de gauche devient le déroulé (chaque étape affiche son état et sa durée), l'onglet **Journal** s'ajoute et défile, la barre du bas affiche la progression et le bouton Annuler.
 - **Clôturer** : un onglet **Clôture** apparaît avec la passphrase administrateur masquée (boutons Afficher et Copier), la checklist « Avant de rendre le PC » et l'accès au rapport.
 
 Le bandeau du haut indique en permanence le mode : SIMULATION, INTERVENTION RÉELLE ou APERÇU.
 
-## Etape 1 - Dry-run (aucune modification)
+## Phase 1 - Simulation (aucune modification)
 
-**Plus simple avec la GUI :** double-clic sur `Lancer.bat`, cocher « Mode dry-run (-WhatIf) » dans la carte RÉGLAGES, puis cliquer LANCER L'INTERVENTION dans la barre d'action en bas de la fenêtre. Même effet que `Run.ps1 -WhatIf`, avec le journal en direct dans l'onglet Journal.
+**Plus simple avec la GUI :** double-clic sur `Lancer.bat`, cocher « Simulation : montrer sans rien modifier » dans la carte RÉGLAGES, puis cliquer LANCER LA SIMULATION dans la barre d'action en bas de la fenêtre (le bouton prend ce libellé dès que la case est cochée ; décochée, il redevient LANCER L'INTERVENTION). Le titre de la fenêtre affiche alors le préfixe [SIMULATION]. Même effet que `Run.ps1 -WhatIf`, avec le journal en direct dans l'onglet Journal, qui s'ajoute au lancement.
 
 En ligne de commande (fallback si la GUI ne s'ouvre pas) :
 
@@ -45,7 +45,7 @@ powershell -ExecutionPolicy Bypass -File .\Run.ps1 -WhatIf
 
 Taper `A` pour voir l'enchainement complet sans rien modifier. Lire surtout ce que veulent faire le module 03 (Debloat) et le module 08 (Accounts).
 
-## Etape 2 - Run reel, module par module (recommande pour un premier PC)
+## Phase 2 - Intervention réelle, étape par étape (recommandé pour un premier PC)
 
 Relancer sans `-WhatIf`, puis choisir les modules un par un dans le menu. Points de vigilance :
 
@@ -65,7 +65,7 @@ Relancer sans `-WhatIf`, puis choisir les modules un par un dans le menu. Points
 
 Alternative rapide pour un PC deja connu : `powershell -ExecutionPolicy Bypass -File .\Run.ps1 -All`. Attention : `-All` passe `-Force` partout, donc debloat automatique sans confirmation.
 
-## Etape 3 - Verifications avant de rendre le PC
+## Phase 3 - Vérifications avant de rendre le PC
 
 Le cockpit reprend cette liste dans l'onglet **Clôture**, sous « Avant de rendre le PC » : les cases s'y cochent au fur et à mesure et la ligne de redémarrage passe en rouge si un reboot est requis.
 
@@ -75,7 +75,7 @@ Le cockpit reprend cette liste dans l'onglet **Clôture**, sous « Avant de rend
 - [ ] Si la banniere **REDEMARRAGE REQUIS** s'est affichee (ou fichier `runtime\reboot-required.flag` present) : redemarrer le PC avant de le rendre.
 - [ ] Lire `runtime\RAPPORT-<PC>-<date>.txt` et verifier le nombre d'ERROR.
 
-## Etape 4 - Rendre le PC
+## Phase 4 - Rendre le PC
 
 - [ ] Remettre la note utilisateur (`runtime\NOTE-UTILISATEUR-<PC>.md`), imprimee ou transmise.
 - [ ] **Communiquer le mot de passe admin** au proprietaire, a stocker dans un gestionnaire (Bitwarden gratuit) ou sur papier en lieu sur. Le mot de passe n'est volontairement pas dans la note utilisateur.

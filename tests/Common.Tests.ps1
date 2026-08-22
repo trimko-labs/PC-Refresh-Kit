@@ -1178,6 +1178,30 @@ Describe 'Run-GUI.ps1 (cockpit v1.6)' {
         $c = Get-Content "$PSScriptRoot\..\Run-GUI.ps1" -Raw
         $c | Should -Match "ReportFile -like '\*\.html'"
     }
+    It 'câble Show-KitJournalTab dans le gestionnaire du bouton LANCER' {
+        # Garde-fou statique du câblage (spec 4.3 : le Journal s'ouvre et prend le
+        # focus au lancement). Le SelfTest appelle Show-KitJournalTab DIRECTEMENT :
+        # retirer l'appel du gestionnaire y passerait donc inaperçu. Contrôle par
+        # AST plutôt que par regex de proximité : le corps du gestionnaire est
+        # délimité par le parseur, pas par un nombre de lignes.
+        $ast = [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path "$PSScriptRoot\..\Run-GUI.ps1").Path, [ref]$null, [ref]$null)
+        $handlers = @($ast.FindAll({
+            param($n)
+            $n -is [System.Management.Automation.Language.InvokeMemberExpressionAst] -and
+            $n.Member -is [System.Management.Automation.Language.StringConstantExpressionAst] -and
+            $n.Member.Value -eq 'Add_Click' -and
+            $n.Expression.Extent.Text -eq '$btnRun'
+        }, $true))
+        $handlers.Count | Should -Be 1
+        # Recherche d'un CommandAst réel, pas du texte : un appel COMMENTÉ dans le
+        # gestionnaire passerait une regex sur Extent.Text.
+        @($handlers[0].Arguments[0].FindAll({
+            param($n)
+            $n -is [System.Management.Automation.Language.CommandAst] -and
+            $n.GetCommandName() -eq 'Show-KitJournalTab'
+        }, $true)).Count | Should -Be 1
+    }
 }
 
 # ---------------------------------------------------------------------------
@@ -1651,7 +1675,7 @@ Describe 'Test-InKeepList' {
 # ---------------------------------------------------------------------------
 Describe 'Get-KitVersion' {
     It 'retourne la version courante du kit' {
-        Get-KitVersion | Should -Be 'v2.2'
+        Get-KitVersion | Should -Be 'v2.3'
     }
 }
 
@@ -1729,7 +1753,7 @@ Describe 'Build-ModuleArgList' {
     It 'inclut toujours -Unattended' {
         Build-ModuleArgList -Id '00' | Should -Contain '-Unattended'
     }
-    It 'ajoute -WhatIf en mode dry-run' {
+    It 'ajoute -WhatIf en mode simulation' {
         Build-ModuleArgList -Id '00' -DryRun | Should -Contain '-WhatIf'
     }
     It '01 ajoute -SkipDataBackup quand BackupData est faux' {

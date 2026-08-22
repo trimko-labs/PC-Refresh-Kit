@@ -48,7 +48,7 @@ function Get-HeartbeatMessage {
 
 # ---------------------------------------------------------------------------
 # Get-EndChecklistItems : étapes post-run que l'opérateur doit cocher avant de
-# rendre le PC (source : docs/PROCEDURE-OPERATEUR.md, étapes 3 et 4). L'item
+# rendre le PC (source : docs/PROCEDURE-OPERATEUR.md, phases 3 et 4). L'item
 # redémarrage est formulé selon l'état du flag reboot. PURE/testable.
 # ---------------------------------------------------------------------------
 function Get-EndChecklistItems {
@@ -192,7 +192,7 @@ function ConvertTo-HtmlEncoded {
 # Get-KitVersion : version courante du kit, source unique. Utilisée dans le
 # rapport (module 10). Centralise ce qui était codé en dur.
 # ---------------------------------------------------------------------------
-function Get-KitVersion { return 'v2.2' }
+function Get-KitVersion { return 'v2.3' }
 
 # ---------------------------------------------------------------------------
 # Remove-PasswordLines : retire d'un bloc de texte toute ligne portant un mot

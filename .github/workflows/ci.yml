@@ -38,3 +38,9 @@ jobs:
       - name: Smoke-tests (modules en -WhatIf)
         shell: powershell
         run: .\tests\Invoke-SmokeTest.ps1 -CI
+
+      - name: SelfTest GUI (parcours utilisateur)
+        shell: powershell
+        run: |
+          powershell -ExecutionPolicy Bypass -File .\Run-GUI.ps1 -SelfTest
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

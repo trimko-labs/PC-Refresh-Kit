@@ -49,7 +49,7 @@ Describe 'Get-HelpCatalog' {
 Describe 'Get-HelpEntry' {
     It 'renvoie l entrée demandée' {
         $c = Get-HelpCatalog -Path $script:CatalogPath
-        (Get-HelpEntry -Catalog $c -Key 'module.03').title | Should -Match 'Debloat'
+        (Get-HelpEntry -Catalog $c -Key 'module.03').title | Should -Match 'Désencombrement'
     }
 
     It 'renvoie une entrée de repli sur une clé inconnue' {
@@ -103,6 +103,21 @@ Describe 'Format-HelpTooltip' {
     }
 }
 
+Describe 'Get-KitHelpDecision' {
+    It 'renvoie <Expected> pour <Source>/pinned=<Pinned>/frozen=<Frozen>' -ForEach @(
+        @{ Source='Hover';  Pinned=$true;  Frozen=$true;  Expected='Ignore' }
+        @{ Source='Hover';  Pinned=$true;  Frozen=$false; Expected='Ignore' }
+        @{ Source='Direct'; Pinned=$true;  Frozen=$true;  Expected='Ignore' }
+        @{ Source='Direct'; Pinned=$true;  Frozen=$false; Expected='Ignore' }
+        @{ Source='Direct'; Pinned=$false; Frozen=$true;  Expected='Show' }
+        @{ Source='Direct'; Pinned=$false; Frozen=$false; Expected='Show' }
+        @{ Source='Hover';  Pinned=$false; Frozen=$true;  Expected='Ignore' }
+        @{ Source='Hover';  Pinned=$false; Frozen=$false; Expected='Defer' }
+    ) {
+        Get-KitHelpDecision -Source $Source -Pinned $Pinned -Frozen $Frozen | Should -Be $Expected
+    }
+}
+
 Describe 'Couverture du catalogue' {
     BeforeAll {
         $script:Catalog = Get-HelpCatalog -Path (Join-Path $PSScriptRoot '..\config\help.fr.json')
@@ -116,8 +131,9 @@ Describe 'Couverture du catalogue' {
             'option.cache','option.onedrive','option.oem','option.netreset','option.dryrun',
             'debloat.conservative','debloat.standard','debloat.aggressive',
             'account.standard','account.keepadmin',
+            'profile.custom',
             'action.run','action.cancel','action.report','action.delfiche',
-            'action.copypassword','action.applyprofile','action.saveprofile',
+            'action.copypassword','action.saveprofile',
             'action.pwdshow','action.newrun'
         )
     }

@@ -90,15 +90,15 @@ Describe 'Get-ModuleStateGlyph' {
 Describe 'Get-RunSummaryText' {
     It 'compose le résumé de préparation au format de la spec 4.4' {
         Get-RunSummaryText -ModuleCount 14 -SensitiveCount 0 -ProfileName 'standard' -IsDryRun $true |
-            Should -Be '14 modules sélectionnés - 0 action sensible - profil standard - SIMULATION'
+            Should -Be '14 étapes sélectionnées - 0 action sensible - profil standard - SIMULATION'
     }
     It 'gère singulier, absence de profil et mode réel' {
         Get-RunSummaryText -ModuleCount 1 -SensitiveCount 2 -ProfileName '' -IsDryRun $false |
-            Should -Be '1 module sélectionné - 2 actions sensibles - INTERVENTION RÉELLE'
+            Should -Be '1 étape sélectionnée - 2 actions sensibles - INTERVENTION RÉELLE'
     }
     It 'accorde vraiment, sans « (s) » : zéro reste au singulier' {
         $t = Get-RunSummaryText -ModuleCount 0 -SensitiveCount 1 -ProfileName '' -IsDryRun $true
-        $t | Should -Be '0 module sélectionné - 1 action sensible - SIMULATION'
+        $t | Should -Be '0 étape sélectionnée - 1 action sensible - SIMULATION'
         $t | Should -Not -Match '\(s\)'
     }
 }
@@ -288,18 +288,25 @@ Describe 'New-KitBand et Set-KitBadgeMode' {
 }
 
 Describe 'New-KitModuleRow et Set-KitModuleRowState' {
-    It 'ligne avec case cochée par défaut, id et nom' {
-        $r = New-KitModuleRow -Id '03' -Name 'Debloat' -Mdl2Available $false
+    It 'ligne avec case cochée par défaut, numéro d''étape et nom' {
+        $r = New-KitModuleRow -Index '4' -Name 'Désencombrement' -Mdl2Available $false
         try {
-            $r.Id | Should -Be '03'
+            $r.Index | Should -Be '4'
             $r.CheckBox.Checked | Should -BeTrue
             $r.CheckBox.Visible | Should -BeTrue
             $r.GlyphLabel.Visible | Should -BeFalse
-            $r.NameLabel.Text | Should -Be 'Debloat'
+            $r.NameLabel.Text | Should -Be 'Désencombrement'
+        } finally { $r.Panel.Dispose() }
+    }
+    It 'affiche le numéro d''étape et le label français' {
+        $r = New-KitModuleRow -Index '15' -Name 'Rapport' -Mdl2Available $false
+        try {
+            $r.IdLabel.Text   | Should -Be '15'
+            $r.NameLabel.Text | Should -Be 'Rapport'
         } finally { $r.Panel.Dispose() }
     }
     It 'Running : glyphe visible, case masquée, nom en gras, détail affiché' {
-        $r = New-KitModuleRow -Id '03' -Name 'Debloat' -Mdl2Available $false
+        $r = New-KitModuleRow -Index '4' -Name 'Désencombrement' -Mdl2Available $false
         try {
             Set-KitModuleRowState -Row $r -State Running -Detail 'en cours - 01:12' -Mdl2Available $false
             $r.CheckBox.Visible | Should -BeFalse
@@ -310,7 +317,7 @@ Describe 'New-KitModuleRow et Set-KitModuleRowState' {
         } finally { $r.Panel.Dispose() }
     }
     It 'Ok puis Skipped : glyphes, couleurs et graisse cohérents' {
-        $r = New-KitModuleRow -Id '05' -Name 'Updates' -Mdl2Available $false
+        $r = New-KitModuleRow -Index '6' -Name 'Mises à jour' -Mdl2Available $false
         try {
             Set-KitModuleRowState -Row $r -State Ok -Detail '08:05' -Mdl2Available $false
             $r.GlyphLabel.ForeColor.ToArgb() | Should -Be (ConvertTo-KitColor -Hex '#16a34a').ToArgb()
@@ -322,7 +329,7 @@ Describe 'New-KitModuleRow et Set-KitModuleRowState' {
     It 'Queued masque la case au profit du glyphe d''attente (module en file pendant un run)' {
         # Pendant un run, plus aucune case ne doit subsister dans la colonne :
         # une case à cocher promet une modification possible, elle est fausse ici.
-        $r = New-KitModuleRow -Id '07' -Name 'Cleanup' -Mdl2Available $true
+        $r = New-KitModuleRow -Index '8' -Name 'Nettoyage' -Mdl2Available $true
         try {
             Set-KitModuleRowState -Row $r -State Queued -Detail 'en attente' -Mdl2Available $true
             $r.CheckBox.Visible | Should -BeFalse
@@ -333,7 +340,7 @@ Describe 'New-KitModuleRow et Set-KitModuleRowState' {
         } finally { $r.Panel.Dispose() }
     }
     It 'Pending remet la case visible (retour préparation)' {
-        $r = New-KitModuleRow -Id '05' -Name 'Updates' -Mdl2Available $false
+        $r = New-KitModuleRow -Index '6' -Name 'Mises à jour' -Mdl2Available $false
         try {
             Set-KitModuleRowState -Row $r -State Ok -Detail '08:05' -Mdl2Available $false
             Set-KitModuleRowState -Row $r -State Pending -Detail '' -Mdl2Available $false
@@ -345,7 +352,7 @@ Describe 'New-KitModuleRow et Set-KitModuleRowState' {
     It 'le détail reste dans le panneau à chaque changement de texte' {
         # Un Label AutoSize ancré à droite ne se repositionne pas quand son texte
         # s'allonge : sans recalage, le détail sort du panneau et devient invisible.
-        $r = New-KitModuleRow -Id '08' -Name 'Rapport' -Mdl2Available $false
+        $r = New-KitModuleRow -Index '15' -Name 'Rapport' -Mdl2Available $false
         try {
             $r.Panel.Width = 300
             Set-KitModuleRowState -Row $r -State Running -Detail 'en cours - 01:12' -Mdl2Available $false

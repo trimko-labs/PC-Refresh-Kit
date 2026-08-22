@@ -19,13 +19,13 @@ Site du projet : https://kit.trimko.com
 
 ![Préparation](docs/img/gui-prepare.png)
 
-Préparer : profil d'intervention, modules, réglages et actions sensibles, aide intégrée. La barre
-d'action résume ce qui sera fait.
+Préparer : profil d'intervention appliqué d'emblée, étapes 1 à 15, réglages et actions sensibles,
+aide intégrée. La barre d'action résume ce qui sera fait.
 
 ![Exécution](docs/img/gui-run.png)
 
-Exécuter : chaque module affiche son état et sa durée sur la timeline, le journal défile,
-la barre porte la progression.
+Exécuter : chaque étape affiche son état et sa durée sur la timeline, l'onglet Journal s'ouvre et
+défile, la barre porte la progression.
 
 ![Clôture](docs/img/gui-close.png)
 
@@ -33,10 +33,16 @@ Clôturer : passphrase masquée à remettre au propriétaire, checklist avant re
 
 ## Aide intégrée
 
-Le cockpit affiche deux onglets à droite : **Aide** et **Journal** ; un troisième, **Clôture**,
-apparaît en fin de run. Survoler un module ou une option affiche dans l'onglet Aide ce qu'elle
-fait, ce qui est protégé, si l'action est réversible, combien de temps elle prend et dans quel cas
-la décocher. L'infobulle donne le résumé, l'onglet donne le détail.
+Le cockpit affiche l'onglet **Aide** à droite ; le **Journal** s'ajoute au lancement de
+l'intervention et la **Clôture** en fin de run. Survoler une étape ou une option affiche dans
+l'onglet Aide ce qu'elle fait, ce qui est protégé, si l'action est réversible, combien de temps
+elle prend et dans quel cas la décocher. L'infobulle donne le résumé, l'onglet donne le détail.
+
+Le panneau ne suit pas le curseur au pixel près : il attend un court délai de survol avant de
+remplacer ce qui est affiché, si bien que traverser l'écran pour aller lire ne fait plus
+disparaître la rubrique en cours. Entrer dans le panneau fige son contenu, le temps de lire et de
+faire défiler. Une épingle en tête du panneau verrouille la rubrique affichée quoi qu'on survole
+ensuite ; un second clic ou la touche Échap la libère.
 
 Le contenu vit dans `config/help.fr.json`, seule source de vérité. Un contrôle ajouté à
 l'interface sans entrée correspondante fait échouer la CI (`tests/Help.Tests.ps1`).
@@ -54,10 +60,11 @@ l'interface sans entrée correspondante fait échouer la CI (`tests/Help.Tests.p
 ### Interface graphique (recommande)
 
 Double-cliquer sur `Lancer.bat` : la fenêtre demande l'élévation administrateur (UAC), puis ouvre
-le cockpit. Cocher les modules et les actions souhaitées, puis cliquer LANCER dans la barre d'action
-en bas de la fenêtre. Le déroulé s'affiche en direct ; en fin de run, l'onglet Clôture présente la
-passphrase administrateur masquée (boutons Afficher et Copier), la checklist de restitution et le
-rapport.
+le cockpit sur le profil standard déjà appliqué. Ajuster les étapes et les actions souhaitées, puis
+cliquer le bouton principal de la barre d'action en bas de la fenêtre : LANCER L'INTERVENTION, ou
+LANCER LA SIMULATION si la case Simulation est cochée. Le déroulé s'affiche en direct ; en fin de
+run, l'onglet Clôture présente la passphrase administrateur masquée (boutons Afficher et Copier),
+la checklist de restitution et le rapport.
 
 En secours (si la GUI ne s'ouvre pas sur une machine), `Lancer-Console.bat` ouvre le menu texte.
 
@@ -72,11 +79,12 @@ powershell -ExecutionPolicy Bypass -File .\Run.ps1
 
 Le menu interactif s'affiche. Taper `A` pour tout executer, ou le numero d'un module specifique.
 
-### Apercu sans rien modifier (WhatIf)
+### Aperçu sans rien modifier (simulation, `-WhatIf`)
 
-Double-cliquer sur `Lancer-Demo.bat` : le cockpit s'ouvre avec le mode dry-run deja active.
-Tous les modules sont simules et le journal defile normalement, mais aucune modification n'est
-appliquee. C'est le point d'entree a utiliser pour une demonstration sur une machine qu'on ne
+Double-cliquer sur `Lancer-Demo.bat` : le cockpit s'ouvre avec la case Simulation déjà cochée, le
+bouton principal sur LANCER LA SIMULATION et le préfixe [SIMULATION] dans le titre de la fenêtre.
+Toutes les étapes sont simulées et le journal défile normalement, mais aucune modification n'est
+appliquée. C'est le point d'entrée à utiliser pour une démonstration sur une machine qu'on ne
 veut pas toucher.
 
 En ligne de commande :
@@ -117,6 +125,10 @@ propre répertoire.
 | 12 | 12-Startup.ps1    | Désactive (réversible) les autostarts indésirables    | Oui (réversible)   |
 | 13 | 13-BrowserPUP.ps1 | Nettoyage policy navigateur Chrome/Edge + rapport     | Oui (réversible)   |
 | 14 | 14-Undo.ps1       | Annule (restaure) les changements réversibles du dernier run | Restaure (12/13)   |
+| 15 | 15-Network.ps1    | Réinitialise Winsock, la pile IP, le cache et le bail DHCP | Oui (non réversible) |
+
+L'interface numérote les étapes 1 à 15 dans l'ordre réel d'exécution ; les identifiants 00 à 15
+ci-dessus sont les noms de fichiers, visibles dans les logs et le rapport.
 
 ## Lancer un seul module
 
@@ -182,6 +194,12 @@ Invoke-Pester .\tests\Common.Tests.ps1 -Output Detailed
 ```
 
 Installer Pester v5 si absent : `Install-Module Pester -Force -SkipPublisherCheck`
+
+`Run-GUI.ps1 -SelfTest` déroule un parcours utilisateur scripté (profils, étapes, mode, journal) sans afficher la fenêtre ; il fait partie de la CI.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Run-GUI.ps1 -SelfTest
+```
 
 ## Securite
 
@@ -366,7 +384,7 @@ Cette version améliore la lisibilité et la sécurité opérationnelle du cockp
 
 ### Pause de vérification backup (module 01)
 
-Après le module 01-Backup, si un backup de données a réellement été effectué (hors dry-run), le cockpit affiche une modale de vérification : l'opérateur confirme que la copie est présente sur le disque externe avant que la file reprenne. Sans action de sa part, la file reprend automatiquement après 5 minutes (timeout de sécurité anti-blocage, journalisé avec WARN). Cette pause garantit qu'aucune suite de run ne part sans backup validé.
+Après le module 01-Backup, si un backup de données a réellement été effectué (hors simulation), le cockpit affiche une modale de vérification : l'opérateur confirme que la copie est présente sur le disque externe avant que la file reprenne. Sans action de sa part, la file reprend automatiquement après 5 minutes (timeout de sécurité anti-blocage, journalisé avec WARN). Cette pause garantit qu'aucune suite de run ne part sans backup validé.
 
 ### Heartbeat pendant les silences de log
 
@@ -382,11 +400,34 @@ Le bouton "Supprimer la fiche PC de la clé" n'est actif qu'en fin de run et seu
 
 ### Profils d'intervention
 
-Trois profils préconfigurés (standard, senior, gamer) sont livrés dans `config/profiles/`. Un profil JSON capture l'état de toutes les options de la GUI (modules cochés, politique debloat, compte, actions sensibles). Les boutons "Appliquer" et "Enregistrer comme profil" permettent de charger ou sauvegarder un profil en un clic. Le mapping module est ancré sur l'Id du module (pas sur sa position dans la liste), garantissant la robustesse si l'ordre des modules change.
+Trois profils préconfigurés (standard, senior, gamer) sont livrés dans `config/profiles/`. Un profil JSON capture l'état de toutes les options de la GUI (étapes cochées, politique de débloatage, compte, actions sensibles). Choisir un profil dans la liste l'applique aussitôt : il n'y a pas de bouton Appliquer à cliquer ensuite. Dès qu'une case est modifiée à la main, la liste bascule sur l'entrée **(personnalisé)**, simple reflet de l'écran courant, et le bouton **Enregistrer comme profil** conserve cette sélection sous un nom. Au démarrage, le profil standard est appliqué d'office. Le mapping module est ancré sur l'Id du module (pas sur sa position dans la liste), garantissant la robustesse si l'ordre des modules change.
 
-### Titre [DRY-RUN] / [RUN RÉEL]
+### Titre [SIMULATION] / [INTERVENTION RÉELLE]
 
-La barre de titre de la fenêtre est préfixée par `[DRY-RUN]` ou `[RUN RÉEL]` pendant toute la durée du run : au démarrage, pendant le décompte du temps écoulé, et sur le message de fin. Hors run, le titre retrouve son état normal. Ce préfixe évite toute confusion sur le mode actif lors d'une intervention en présence du client.
+Le cockpit n'emploie qu'un seul couple de mots pour le mode d'exécution. En simulation (case « Simulation : montrer sans rien modifier », équivalent de `-WhatIf`), chaque étape décrit dans le journal ce qu'elle ferait, sans rien modifier sur la machine ; case décochée, l'intervention est réelle et les actions sont appliquées.
+
+La barre de titre de la fenêtre est préfixée par `[SIMULATION]` ou `[INTERVENTION RÉELLE]` pendant toute la durée du run : au démarrage, pendant le décompte du temps écoulé, et sur le message de fin. Hors run, le titre retrouve son état normal. Ce préfixe évite toute confusion sur le mode actif lors d'une intervention en présence du client. Le badge du bandeau et le bouton principal de la barre d'action disent la même chose : « LANCER LA SIMULATION » quand la case est cochée, « LANCER L'INTERVENTION » sinon.
+
+## Nouveautés v2.3 - passe UX terrain
+
+Corrections issues du premier retour terrain de la v2.2 : l'interface se comporte désormais comme
+elle se lit.
+
+- **Profils immédiats** : choisir un profil applique ses cases sur-le-champ, le bouton Appliquer a
+  disparu, le profil standard est appliqué au démarrage et l'entrée **(personnalisé)** apparaît dès
+  qu'une case est modifiée à la main.
+- **Étapes 1 à 15 en français** : la colonne d'intervention numérote les étapes dans l'ordre réel
+  d'exécution (le Rapport clôt l'intervention en étape 15) ; les identifiants de fichiers 00 à 15
+  ne servent plus qu'aux logs et au rapport.
+- **Un seul vocabulaire de mode** : Simulation / Intervention réelle, sur la case, le badge, le
+  titre de la fenêtre et le bouton principal (LANCER LA SIMULATION / LANCER L'INTERVENTION). Les
+  anciens libellés techniques ont quitté l'interface ; l'option `-WhatIf` de la ligne de commande
+  ne change pas.
+- **Journal à l'heure** : son onglet n'apparaît qu'au lancement, quand il a quelque chose à dire.
+- **Aide qui se laisse lire** : délai de survol avant remplacement, gel du contenu quand le curseur
+  entre dans le panneau, épingle pour verrouiller une rubrique (Échap la libère).
+- **Parcours utilisateur scripté** : `Run-GUI.ps1 -SelfTest` déroule 19 assertions (profils,
+  étapes, mode, journal) sans afficher la fenêtre, et tourne à chaque commit en CI.
 
 ## Licence
 

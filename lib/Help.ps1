@@ -114,3 +114,23 @@ function Format-HelpTooltip {
     $lignes += "Détail complet dans l'onglet Aide."
     return ($lignes -join "`n")
 }
+
+# ---------------------------------------------------------------------------
+# Get-KitHelpDecision : le panneau d'aide doit-il être remplacé ? PURE.
+# Épinglé : rien ne remplace (le lecteur a demandé la stabilité).
+# Direct (sélection, application de profil) : remplace tout de suite.
+# Hover gelé (souris dans le panneau) : ignoré, on ne vole pas la lecture.
+# Hover libre : différé (le délai anti-transit filtre les survols de passage).
+# ---------------------------------------------------------------------------
+function Get-KitHelpDecision {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][ValidateSet('Hover','Direct')][string]$Source,
+        [Parameter(Mandatory)][bool]$Pinned,
+        [Parameter(Mandatory)][bool]$Frozen
+    )
+    if ($Pinned) { return 'Ignore' }
+    if ($Source -eq 'Direct') { return 'Show' }
+    if ($Frozen) { return 'Ignore' }
+    return 'Defer'
+}

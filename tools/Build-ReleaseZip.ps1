@@ -1,7 +1,7 @@
 ﻿# Produit un zip propre du kit pour distribution (exclut le dev).
 [CmdletBinding()]
 param(
-    [string]$Version = "2.2.0",
+    [string]$Version = "2.3.0",
     [string]$OutDir  = ""
 )
 $ErrorActionPreference = "Stop"

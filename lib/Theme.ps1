@@ -129,10 +129,12 @@ function Get-RunSummaryText {
     # Pluriel grammatical réel plutôt que des « (s) » : ce résumé est lu par le
     # propriétaire du PC autant que par l'opérateur. En français, zéro reste au
     # singulier (« 0 action sensible »).
+    # « étape » et non « module » : la colonne de gauche numérote des étapes 1 à 15
+    # depuis la v2.3, le résumé emploie le même mot (accord au féminin).
     $sMod = if ($ModuleCount -gt 1) { 's' } else { '' }
     $sAct = if ($SensitiveCount -gt 1) { 's' } else { '' }
     $prof = if ([string]::IsNullOrWhiteSpace($ProfileName)) { '' } else { " - profil $ProfileName" }
-    return "$ModuleCount module$sMod sélectionné$sMod - $SensitiveCount action$sAct sensible$sAct$prof - $mode"
+    return "$ModuleCount étape$sMod sélectionnée$sMod - $SensitiveCount action$sAct sensible$sAct$prof - $mode"
 }
 
 # ---------------------------------------------------------------------------
@@ -420,10 +422,11 @@ function Set-KitBadgeMode {
 
 function New-KitModuleRow {
     # Ligne de la timeline d'intervention : case (préparation) OU glyphe d'état
-    # (run/clôture), id grisé, nom, détail droit (durée/état).
+    # (run/clôture), numéro d'étape grisé, nom français, détail droit
+    # (durée/état).
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory)][string]$Id,
+        [Parameter(Mandatory)][string]$Index,
         [Parameter(Mandatory)][string]$Name,
         [bool]$Mdl2Available = $true
     )
@@ -448,7 +451,7 @@ function New-KitModuleRow {
                   else                { New-Object System.Drawing.Font('Segoe UI', 9) }
 
     $idLbl = New-Object System.Windows.Forms.Label
-    $idLbl.Text = $Id
+    $idLbl.Text = $Index
     $idLbl.AutoSize = $false
     $idLbl.Size = New-Object System.Drawing.Size(20, 18)
     $idLbl.Location = New-Object System.Drawing.Point(22, 4)
@@ -475,9 +478,11 @@ function New-KitModuleRow {
     }.GetNewClosure())
 
     $panel.Controls.AddRange(@($cbx, $glyph, $idLbl, $nameLbl, $detail))
+    # Index (et non Id) : la colonne montre le numéro d'étape 1..15, plus jamais
+    # l'identifiant technique du fichier module.
     return [PSCustomObject]@{
-        Panel = $panel; CheckBox = $cbx; GlyphLabel = $glyph
-        NameLabel = $nameLbl; DetailLabel = $detail; Id = $Id
+        Panel = $panel; CheckBox = $cbx; GlyphLabel = $glyph; IdLabel = $idLbl
+        NameLabel = $nameLbl; DetailLabel = $detail; Index = $Index
     }
 }
 
