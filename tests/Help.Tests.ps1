@@ -129,6 +129,7 @@ Describe 'Couverture du catalogue' {
         $script:Attendues = $script:Modules + @(
             'option.backupdata','option.scandefender','option.recycle','option.winold',
             'option.cache','option.onedrive','option.oem','option.netreset','option.dryrun',
+            'option.bitlockerkey',
             'debloat.conservative','debloat.standard','debloat.aggressive',
             'account.standard','account.keepadmin',
             'profile.custom',
@@ -168,6 +169,22 @@ Describe 'Couverture du catalogue' {
         foreach ($cle in $script:Catalog.Keys) {
             ([string]$script:Catalog[$cle].short).Length | Should -BeLessOrEqual 200 -Because "$cle a un résumé trop long pour une infobulle"
         }
+    }
+
+    It 'module.16 existe avec le titre en etape 3' {
+        [string]$script:Catalog['module.16'].title | Should -Match '^Étape 3 - Filets de secours'
+    }
+
+    It 'les titres d''etapes sont renumerotes sans collision (1..16 uniques)' {
+        # Un module inséré dans le pipeline sans renumérotation du catalogue crée
+        # deux « Étape N » identiques : la suite triée le révèle aussitôt.
+        $nums = @()
+        foreach ($cle in $script:Catalog.Keys) {
+            if ($cle -like 'module.*' -and [string]$script:Catalog[$cle].title -match '^Étape (\d+) -') {
+                $nums += [int]$Matches[1]
+            }
+        }
+        (@($nums | Sort-Object) -join ',') | Should -Be ((1..16) -join ',')
     }
 
     It 'ne contient aucun tiret cadratin ni demi-cadratin' {

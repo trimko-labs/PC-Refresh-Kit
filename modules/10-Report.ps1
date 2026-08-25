@@ -165,6 +165,9 @@ if ($diagJson) {
 }
 # Delta passé au HTML uniquement si un snapshot "avant" était disponible.
 $deltaParam = if ($null -ne $before) { $delta } else { $null }
+# Sentinelle résilience (module 00, v2.4) : $null sur un diagnostic antérieur,
+# la carte « Filets de sécurité » est alors simplement omise du rapport HTML.
+$resilience = Get-JsonProp $diagJson 'Resilience'
 
 # ---------------------------------------------------------------------------
 # 5. Assembler et écrire le rapport
@@ -335,7 +338,7 @@ else {
     try {
         $html = ConvertTo-ReportHtml -Summary $summary -Meta $meta -RebootNeeded $rebootNeeded `
                     -RebootReasons $rebootReasonsHtml -Lines @($allLines) -Volumes $volHtml -Antivirus $avHtml `
-                    -Delta $deltaParam -Health $health
+                    -Delta $deltaParam -Health $health -Resilience $resilience
 
         # --- Section Extensions navigateur (injection dans le HTML avant </main>) ---
         if ($forceExtIds.Count -gt 0) {

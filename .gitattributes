@@ -1,0 +1,7 @@
+# Fins de ligne des scripts batch : CRLF dans la copie de travail et dans les
+# archives produites par git, quel que soit le reglage core.autocrlf de la
+# machine qui clone. secours.bat tourne sous WinRE, ou cmd.exe est le seul
+# interpreteur disponible : un fichier livre en LF seul y devient un pari.
+# Le depot stocke ces fichiers normalises en LF, git les rend en CRLF a la
+# sortie : aucun blob existant n'est modifie par cette regle.
+*.bat text eol=crlf

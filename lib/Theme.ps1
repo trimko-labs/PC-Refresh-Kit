@@ -129,7 +129,7 @@ function Get-RunSummaryText {
     # Pluriel grammatical réel plutôt que des « (s) » : ce résumé est lu par le
     # propriétaire du PC autant que par l'opérateur. En français, zéro reste au
     # singulier (« 0 action sensible »).
-    # « étape » et non « module » : la colonne de gauche numérote des étapes 1 à 15
+    # « étape » et non « module » : la colonne de gauche numérote des étapes 1 à 16
     # depuis la v2.3, le résumé emploie le même mot (accord au féminin).
     $sMod = if ($ModuleCount -gt 1) { 's' } else { '' }
     $sAct = if ($SensitiveCount -gt 1) { 's' } else { '' }

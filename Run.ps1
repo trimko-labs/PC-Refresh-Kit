@@ -33,6 +33,7 @@ Write-KitLog -Message "Ordinateur : $env:COMPUTERNAME | Profil : $Profile | What
 $modules = @(
     [PSCustomObject]@{ Id = '00'; Name = 'Diagnostic'   ; File = '00-Diagnostic.ps1'  ; Destructif = $false },
     [PSCustomObject]@{ Id = '01'; Name = 'Backup'       ; File = '01-Backup.ps1'       ; Destructif = $true  },
+    [PSCustomObject]@{ Id = '16'; Name = 'Resilience'   ; File = '16-Resilience.ps1'   ; Destructif = $false },
     [PSCustomObject]@{ Id = '02'; Name = 'Antivirus'    ; File = '02-Antivirus.ps1'    ; Destructif = $true  },
     [PSCustomObject]@{ Id = '03'; Name = 'Debloat'      ; File = '03-Debloat.ps1'      ; Destructif = $true  },
     [PSCustomObject]@{ Id = '04'; Name = 'Privacy'      ; File = '04-Privacy.ps1'      ; Destructif = $true  },

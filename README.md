@@ -19,7 +19,7 @@ Site du projet : https://kit.trimko.com
 
 ![Préparation](docs/img/gui-prepare.png)
 
-Préparer : profil d'intervention appliqué d'emblée, étapes 1 à 15, réglages et actions sensibles,
+Préparer : profil d'intervention appliqué d'emblée, étapes 1 à 16, réglages et actions sensibles,
 aide intégrée. La barre d'action résume ce qui sera fait.
 
 ![Exécution](docs/img/gui-run.png)
@@ -67,6 +67,17 @@ run, l'onglet Clôture présente la passphrase administrateur masquée (boutons 
 la checklist de restitution et le rapport.
 
 En secours (si la GUI ne s'ouvre pas sur une machine), `Lancer-Console.bat` ouvre le menu texte.
+
+### PC qui ne démarre plus (mode secours WinRE)
+
+`Lancer.bat` suppose un Windows qui démarre. Quand ce n'est plus le cas (écran bleu `0xc000014c`,
+boucle de réparation automatique), la clé embarque `secours.bat` : il se lance depuis l'invite de
+commandes de l'environnement de récupération (Dépannage > Options avancées > Invite de commandes),
+en tapant la lettre de la clé suivie de `\secours.bat`. Son menu propose un diagnostic en lecture
+seule, un sauvetage de l'état cassé vers la clé, et la restauration guidée d'une ruche registre
+depuis le coffre rempli par l'étape « Filets de secours ».
+
+**Marche à suivre complète, checklists avant et après intervention : [docs/PC-EN-PANNE.md](docs/PC-EN-PANNE.md).**
 
 ### Ligne de commande (fallback)
 
@@ -126,9 +137,12 @@ propre répertoire.
 | 13 | 13-BrowserPUP.ps1 | Nettoyage policy navigateur Chrome/Edge + rapport     | Oui (réversible)   |
 | 14 | 14-Undo.ps1       | Annule (restaure) les changements réversibles du dernier run | Restaure (12/13)   |
 | 15 | 15-Network.ps1    | Réinitialise Winsock, la pile IP, le cache et le bail DHCP | Oui (non réversible) |
+| 16 | 16-Resilience.ps1 | Filets de secours : réarmement WinRE/restauration + coffre de ruches registre (clé + local) | Oui (réarme, copie) |
 
-L'interface numérote les étapes 1 à 15 dans l'ordre réel d'exécution ; les identifiants 00 à 15
-ci-dessus sont les noms de fichiers, visibles dans les logs et le rapport.
+L'interface numérote les étapes 1 à 16 dans l'ordre réel d'exécution ; les identifiants 00 à 16
+ci-dessus sont les noms de fichiers, visibles dans les logs et le rapport. L'ordre d'exécution ne
+suit pas cet ordre de fichiers : les filets de secours (16) passent en étape 3, juste après la
+sauvegarde, et le rapport (10) ferme la marche en étape 16.
 
 ## Lancer un seul module
 
@@ -416,8 +430,8 @@ elle se lit.
 - **Profils immédiats** : choisir un profil applique ses cases sur-le-champ, le bouton Appliquer a
   disparu, le profil standard est appliqué au démarrage et l'entrée **(personnalisé)** apparaît dès
   qu'une case est modifiée à la main.
-- **Étapes 1 à 15 en français** : la colonne d'intervention numérote les étapes dans l'ordre réel
-  d'exécution (le Rapport clôt l'intervention en étape 15) ; les identifiants de fichiers 00 à 15
+- **Étapes 1 à 16 en français** : la colonne d'intervention numérote les étapes dans l'ordre réel
+  d'exécution (le Rapport clôt l'intervention en étape 16) ; les identifiants de fichiers 00 à 16
   ne servent plus qu'aux logs et au rapport.
 - **Un seul vocabulaire de mode** : Simulation / Intervention réelle, sur la case, le badge, le
   titre de la fenêtre et le bouton principal (LANCER LA SIMULATION / LANCER L'INTERVENTION). Les
@@ -428,6 +442,26 @@ elle se lit.
   entre dans le panneau, épingle pour verrouiller une rubrique (Échap la libère).
 - **Parcours utilisateur scripté** : `Run-GUI.ps1 -SelfTest` déroule 19 assertions (profils,
   étapes, mode, journal) sans afficher la fenêtre, et tourne à chaque commit en CI.
+
+## Nouveautés v2.4 - filets de secours
+
+Cette version prépare la panne pendant que le PC va bien, et outille l'intervention quand il ne
+démarre plus.
+
+- **Sentinelle de résilience (étape 1, Diagnostic)** : espace libre de C:, fraîcheur des écritures
+  du registre, restauration système et ses points, réserve de clichés VSS, WinRE, auto-réparation
+  au démarrage, BitLocker. Le verdict est repris dans le rapport, en lecture seule.
+- **Étape 3 « Filets de secours »** (`16-Resilience.ps1`) : réarme WinRE, l'auto-réparation au
+  démarrage et la réserve de clichés (jamais dans le sens de la réduction), pose une empreinte
+  machine, puis sauvegarde les 5 ruches registre dans un coffre daté avec manifeste vérifiable.
+  Coffre externe sur le support du kit, copie locale dans `ProgramData`, 3 jeux conservés.
+- **Coffre local verrouillé** : il contient SAM et SECURITY, donc son dossier est refermé sur
+  SYSTEM et Administrateurs (héritage coupé, propriété reprise) avant la première écriture, et
+  aucune ruche n'y est écrite si ce verrou échoue.
+- **Export de la clé de récupération BitLocker** : case décochée par défaut, choix par
+  intervention, écriture dans le coffre externe uniquement.
+- **`secours.bat`** : mode secours WinRE pour un PC qui ne démarre plus, avec ses garde-fous de
+  restauration. Voir [docs/PC-EN-PANNE.md](docs/PC-EN-PANNE.md).
 
 ## Licence
 

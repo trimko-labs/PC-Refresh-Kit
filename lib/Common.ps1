@@ -39,6 +39,7 @@ if (-not $script:KitLogFile) {
 . "$PSScriptRoot\Report.ps1"
 . "$PSScriptRoot\Undo.ps1"
 . "$PSScriptRoot\Theme.ps1"
+. "$PSScriptRoot\Resilience.ps1"
 
 # ---------------------------------------------------------------------------
 # Test-IsAdmin : vérifie si la session est élevée
@@ -378,6 +379,8 @@ function Get-KitConfig {
         diskWarnFreePct         = 15
         diskErrorFreePct        = 5
         restorePointMaxAgeHours = 4
+        diskWarnFloorGB         = 20
+        diskErrorFloorGB        = 10
     }
     if ([string]::IsNullOrWhiteSpace($Path)) {
         $Path = Join-Path $PSScriptRoot '..\config\kit.json'
@@ -427,7 +430,10 @@ function Get-OptionalTool {
 # les défauts. PURE vis-à-vis du chemin passé (testable).
 #
 # Schéma de retour :
-#   Modules     : hashtable Id -> bool (Ids '00'..'09','11','12','13','15','10')
+#   Modules     : hashtable Id -> bool (Ids '00','01','16','02'..'09','11','12','13','15','10')
+#                 L'option d'export de la clé BitLocker (module 16) est un choix
+#                 PAR INTERVENTION : aucune clé de profil ne la porte, un secret
+#                 ne se coche pas durablement dans un JSON.
 #   Debloat     : 'Conservative' | 'Standard' | 'Aggressive' (défaut 'Standard')
 #   KeepAdmin   : bool (défaut $false)
 #   Recycle     : bool (défaut $false)
@@ -446,7 +452,7 @@ function Read-KitProfile {
     param([Parameter(Mandatory)][string]$Path)
 
     # Identifiants de modules connus (ordre de la GUI)
-    $moduleIds = @('00','01','02','03','04','05','06','07','08','09','11','12','13','15','10')
+    $moduleIds = @('00','01','16','02','03','04','05','06','07','08','09','11','12','13','15','10')
 
     # Table des modules : tous activés par défaut
     $defModules = @{}
@@ -552,6 +558,9 @@ function Build-ModuleArgList {
             if ($keep.Count -gt 0) { $a += @('-KeepPatterns', ('"{0}"' -f ($keep -join ','))) }
         }
         '15' { if ([bool]$Options['NetReset']) { $a += '-ResetNetwork' } }
+        # Export de la clé de récupération BitLocker : option par intervention,
+        # jamais portée par un profil. Absente du hashtable -> pas d'export.
+        '16' { if ([bool]$Options['BitLockerExport']) { $a += '-ExportBitLockerKey' } }
     }
     $a
 }

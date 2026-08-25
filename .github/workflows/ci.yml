@@ -35,6 +35,130 @@ jobs:
           $cfg.Output.Verbosity = 'Detailed'
           Invoke-Pester -Configuration $cfg
 
+      - name: Dry-run secours.bat (parcours D puis Q, aucune ecriture systeme)
+        shell: cmd
+        run: |
+          REM Les tests statiques lisent secours.bat ; cette etape le FAIT TOURNER.
+          REM Seuls crochets autorises : SECOURS_FORCE_WIN choisit le volume et
+          REM SECOURS_DRYRUN prefixe toute ecriture systeme par un echo. Le
+          REM parcours D puis Q traverse le diagnostic complet en lecture seule.
+          REM Le fichier de reponses vit dans %TEMP%, jamais dans le depot, et
+          REM n'enchaine jamais trois lignes vides : la troisieme ferme le menu.
+          set SECOURS_FORCE_WIN=C:
+          set SECOURS_DRYRUN=1
+          > "%TEMP%\reponses.txt" echo D
+          >>"%TEMP%\reponses.txt" echo Q
+          cmd /c "%CD%\secours.bat" < "%TEMP%\reponses.txt"
+          if errorlevel 1 echo ECHEC : code de sortie non nul& exit /b 1
+          if not exist secours\secours.txt echo ECHEC : journal absent& exit /b 1
+          if not exist secours\outils-winre.txt echo ECHEC : inventaire des outils absent& exit /b 1
+          if not exist secours\diagfait.txt echo ECHEC : trace de diagnostic absente& exit /b 1
+          REM findstr.exe en chemin absolu : le PATH des runners porte le usr\bin
+          REM de Git, dont le find GNU repond a la place de celui de Windows.
+          %SystemRoot%\System32\findstr.exe /c:"FIN DIAG" secours\secours.txt >nul
+          if errorlevel 1 echo ECHEC : le diagnostic n a pas ete au bout& exit /b 1
+          REM Aucune ecriture hors du dossier secours de la cle : ni coffre, ni
+          REM sortie a la racine du volume, ni fichier parasite dans le depot.
+          if exist Coffre echo ECHEC : ecriture parasite Coffre& exit /b 1
+          if exist C:\secours echo ECHEC : ecriture parasite a la racine du volume& exit /b 1
+          if exist C:\Coffre echo ECHEC : ecriture parasite a la racine du volume& exit /b 1
+          for /f "delims=" %%L in ('git ls-files --others --exclude-standard') do echo ECHEC : fichier parasite %%L& exit /b 1
+          rmdir /s /q secours
+          del "%TEMP%\reponses.txt"
+          echo OK : parcours D puis Q en dry-run, sortie 0, aucune ecriture parasite
+          exit /b 0
+
+      - name: Dry-run secours.bat (refus des garde-fous R, aucune ruche posee)
+        shell: cmd
+        run: |
+          REM Les garde-fous de la restauration [R] sont ce qui separe une cle de
+          REM secours d'une machine briquee : ils refusent de poser la ruche
+          REM SYSTEM d'une AUTRE machine. Ils tournent ici pour de vrai, sur un
+          REM FAUX volume et un FAUX coffre montes dans %TEMP%. secours.bat est
+          REM COPIE dans le bac a sable, donc %~dp0 y pointe : le coffre de la
+          REM cle, le journal et le LISEZMOI y vivent aussi, le depot n'est
+          REM jamais touche et aucun volume reel n'est ecrit.
+          REM Les reponses viennent d'un fichier de %TEMP% et n'enchainent jamais
+          REM trois lignes vides : la troisieme fermerait le menu.
+          set "BAC=%TEMP%\prk-secours-r"
+          set "VOL=%BAC%\vol"
+          set "CFGT=%VOL%\Windows\System32\config"
+          set "JEU=%BAC%\Coffre\PC-FICTIF-DE-TEST\hives-20260101-010203"
+          set "REP=%TEMP%\prk-reponses.txt"
+          set "SORTIE=%TEMP%\prk-sortie.txt"
+          if exist "%BAC%" rmdir /s /q "%BAC%"
+          md "%CFGT%"
+          md "%VOL%\ProgramData\PC-Refresh-Kit"
+          copy /y "%CD%\secours.bat" "%BAC%\secours.bat" >nul
+          >"%VOL%\ProgramData\PC-Refresh-Kit\machine-id.txt" echo PRK-TEST-0000AAAA-1111-2222-3333-444455556666
+          set SECOURS_DRYRUN=1
+          set "SECOURS_FORCE_WIN=%VOL%"
+          REM --- Cas 1 : aucun coffre. [R] refuse avant meme de demander une ruche.
+          > "%REP%" echo D
+          >>"%REP%" echo R
+          >>"%REP%" echo Q
+          cmd /c "%BAC%\secours.bat" < "%REP%" > "%SORTIE%" 2>&1
+          if errorlevel 1 type "%SORTIE%"& echo ECHEC cas 1 : code de sortie non nul& exit /b 1
+          %SystemRoot%\System32\findstr.exe /c:"REFUS : aucun coffre de CE PC" "%SORTIE%" >nul
+          if errorlevel 1 type "%SORTIE%"& echo ECHEC cas 1 : refus sans coffre absent& exit /b 1
+          %SystemRoot%\System32\findstr.exe /c:"PRET A POSER" "%SORTIE%" >nul
+          if not errorlevel 1 type "%SORTIE%"& echo ECHEC cas 1 : une pose a ete proposee& exit /b 1
+          for %%F in ("%CFGT%\*") do echo ECHEC cas 1 : ruche ecrite [%%F]& exit /b 1
+          echo OK cas 1 : aucun coffre, [R] refuse, rien d ecrit
+          REM --- Cas 2 : coffre de CE PC, complet, confirmation autre que OUI. Ce
+          REM cas est le TEMOIN POSITIF des deux autres : il prouve que la fixture
+          REM est bien formee, que le coffre est retenu et que [R] va jusqu'a
+          REM PRET A POSER. Sans lui, un refus pourrait n'etre qu'un chemin mal
+          REM ecrit, et les trois cas passeraient au vert sans rien prouver.
+          md "%JEU%"
+          >"%JEU%\SYSTEM" echo ruche factice de test, aucun contenu reel
+          >"%JEU%\manifest.txt" echo machineid=PRK-TEST-0000AAAA-1111-2222-3333-444455556666
+          for %%F in ("%JEU%\SYSTEM") do >>"%JEU%\manifest.txt" echo taille_SYSTEM=%%~zF
+          > "%REP%" echo D
+          >>"%REP%" echo R
+          >>"%REP%" echo S
+          >>"%REP%" echo NON
+          >>"%REP%" echo Q
+          cmd /c "%BAC%\secours.bat" < "%REP%" > "%SORTIE%" 2>&1
+          if errorlevel 1 type "%SORTIE%"& echo ECHEC cas 2 : code de sortie non nul& exit /b 1
+          %SystemRoot%\System32\findstr.exe /c:"PRET A POSER" "%SORTIE%" >nul
+          if errorlevel 1 type "%SORTIE%"& echo ECHEC cas 2 : le coffre de CE PC n a pas ete retenu& exit /b 1
+          %SystemRoot%\System32\findstr.exe /c:"Abandon : confirmation non recue" "%SORTIE%" >nul
+          if errorlevel 1 type "%SORTIE%"& echo ECHEC cas 2 : une confirmation autre que OUI a ete acceptee& exit /b 1
+          for %%F in ("%CFGT%\*") do echo ECHEC cas 2 : ruche ecrite [%%F]& exit /b 1
+          echo OK cas 2 : coffre retenu, PRET A POSER atteint, confirmation NON refusee
+          REM --- Cas 3 : MEMES reponses qu'au cas 2, MEME coffre, une seule
+          REM variable changee : l'empreinte du manifeste devient celle d'une
+          REM AUTRE machine. Poser cette ruche SYSTEM la rendrait ce PC
+          REM indemarrable, c'est le pire resultat possible du kit. Deux verrous
+          REM la ferment, l'appariement au scan (:scan_jeu) et la reverification
+          REM a la pose (:r_autre_pc). Le premier repond en premier ; MESURE en
+          REM retirant le premier d'une copie de secours.bat, le second prend le
+          REM relais mot pour mot. D'ou les deux libelles acceptes ici, et
+          REM l'absence de PRET A POSER qui, elle, n'est negociable dans aucun cas.
+          >"%JEU%\manifest.txt" echo machineid=PRK-TEST-9999ZZZZ-8888-7777-6666-555544443333
+          for %%F in ("%JEU%\SYSTEM") do >>"%JEU%\manifest.txt" echo taille_SYSTEM=%%~zF
+          > "%REP%" echo D
+          >>"%REP%" echo R
+          >>"%REP%" echo S
+          >>"%REP%" echo NON
+          >>"%REP%" echo Q
+          cmd /c "%BAC%\secours.bat" < "%REP%" > "%SORTIE%" 2>&1
+          if errorlevel 1 type "%SORTIE%"& echo ECHEC cas 3 : code de sortie non nul& exit /b 1
+          %SystemRoot%\System32\findstr.exe /c:"REFUS : aucun coffre de CE PC" /c:"REFUS : ce coffre vient d'un AUTRE PC" "%SORTIE%" >nul
+          if errorlevel 1 type "%SORTIE%"& echo ECHEC cas 3 : le coffre d une autre machine n a pas ete refuse& exit /b 1
+          %SystemRoot%\System32\findstr.exe /c:"PRET A POSER" "%SORTIE%" >nul
+          if not errorlevel 1 type "%SORTIE%"& echo ECHEC cas 3 : une pose a ete proposee depuis un coffre etranger& exit /b 1
+          for %%F in ("%CFGT%\*") do echo ECHEC cas 3 : ruche ecrite [%%F]& exit /b 1
+          echo OK cas 3 : coffre d une autre machine refuse, rien d ecrit
+          rmdir /s /q "%BAC%"
+          del "%REP%" "%SORTIE%"
+          if exist Coffre echo ECHEC : ecriture parasite Coffre& exit /b 1
+          if exist secours echo ECHEC : ecriture parasite secours& exit /b 1
+          for /f "delims=" %%L in ('git ls-files --others --exclude-standard') do echo ECHEC : fichier parasite %%L& exit /b 1
+          echo OK : les trois refus [R] ont mordu, aucune ruche posee
+          exit /b 0
+
       - name: Smoke-tests (modules en -WhatIf)
         shell: powershell
         run: .\tests\Invoke-SmokeTest.ps1 -CI

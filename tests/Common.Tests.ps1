@@ -1576,6 +1576,9 @@ Describe 'Get-EndChecklistItems' {
     It 'mentionne toujours le nettoyage de la clé (fiche PC)' {
         (Get-EndChecklistItems -RebootRequired $false) -join "`n" | Should -Match 'fiche|FICHE'
     }
+    It 'rappelle le coffre de ruches (v2.4)' {
+        (Get-EndChecklistItems -RebootRequired $false) -join "`n" | Should -Match 'Coffre de ruches'
+    }
 }
 
 # ---------------------------------------------------------------------------
@@ -1604,6 +1607,18 @@ Describe 'Read-KitProfile' {
     It 'expose une table Modules avec des bool' {
         $r = Read-KitProfile -Path (Join-Path $TestDrive 'absent2.json')
         $r.Modules['00'] | Should -BeTrue
+    }
+    It 'connait le module 16 (defaut actif) place apres 01' {
+        $p = Read-KitProfile -Path (Join-Path $TestDrive 'absent16.json')
+        $p.Modules['16'] | Should -BeTrue
+        # L'option BitLocker est PAR INTERVENTION : elle n'existe pas dans les profils.
+        $p.PSObject.Properties['BitLockerExport'] | Should -BeNullOrEmpty
+    }
+    It 'les 3 profils livrés activent le module 16' {
+        foreach ($n in @('standard','senior','gamer')) {
+            $path = Join-Path $PSScriptRoot "..\config\profiles\$n.json"
+            (Read-KitProfile -Path $path).Modules['16'] | Should -BeTrue -Because "$n.json doit porter la clé 16"
+        }
     }
     It 'les 3 profils livrés sont du JSON valide' {
         foreach ($n in @('standard','senior','gamer')) {
@@ -1675,7 +1690,7 @@ Describe 'Test-InKeepList' {
 # ---------------------------------------------------------------------------
 Describe 'Get-KitVersion' {
     It 'retourne la version courante du kit' {
-        Get-KitVersion | Should -Be 'v2.3'
+        Get-KitVersion | Should -Be 'v2.4'
     }
 }
 
@@ -1788,6 +1803,14 @@ Describe 'Build-ModuleArgList' {
     It '15 ajoute -ResetNetwork seulement si demandé' {
         Build-ModuleArgList -Id '15' -Options @{ NetReset = $true }  | Should -Contain '-ResetNetwork'
         Build-ModuleArgList -Id '15' -Options @{ NetReset = $false } | Should -Not -Contain '-ResetNetwork'
+    }
+    It '16 : option BitLockerExport -> -ExportBitLockerKey' {
+        $a = Build-ModuleArgList -Id '16' -Options @{ BitLockerExport = $true }
+        $a | Should -Contain '-ExportBitLockerKey'
+        $a = Build-ModuleArgList -Id '16' -Options @{ BitLockerExport = $false }
+        $a | Should -Not -Contain '-ExportBitLockerKey'
+        # Option absente du hashtable : jamais d'export de secret par défaut.
+        Build-ModuleArgList -Id '16' | Should -Not -Contain '-ExportBitLockerKey'
     }
 }
 

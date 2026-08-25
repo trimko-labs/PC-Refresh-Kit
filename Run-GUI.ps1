@@ -50,12 +50,15 @@ if (-not $UiPreview -and -not $SelfTest -and -not (Test-IsAdmin)) {
 
 # --- État partagé (portée script pour être visible dans les handlers) ---
 $script:Root        = $PSScriptRoot
-# Ordre du tableau = ordre d'exécution = numéro d'étape affiché (1..15).
+# Ordre du tableau = ordre d'exécution = numéro d'étape affiché (1..16).
 # Id/Name/File restent techniques : Build-Queue, logs, profils et rapport en
 # dépendent. Label est le seul nom montré dans la fenêtre.
 $script:Modules     = @(
     [PSCustomObject]@{ Id='00'; Name='Diagnostic'; Label='Diagnostic';        File='00-Diagnostic.ps1' }
     [PSCustomObject]@{ Id='01'; Name='Backup';     Label='Sauvegarde';        File='01-Backup.ps1' }
+    # Juste après la sauvegarde : les filets de secours arment de quoi réparer un
+    # PC qui ne démarrerait plus, AVANT toute étape qui modifie le système.
+    [PSCustomObject]@{ Id='16'; Name='Resilience'; Label='Filets de secours';  File='16-Resilience.ps1' }
     [PSCustomObject]@{ Id='02'; Name='Antivirus';  Label='Antivirus';         File='02-Antivirus.ps1' }
     [PSCustomObject]@{ Id='03'; Name='Debloat';    Label='Désencombrement';   File='03-Debloat.ps1' }
     [PSCustomObject]@{ Id='04'; Name='Privacy';    Label='Confidentialité';   File='04-Privacy.ps1' }
@@ -344,12 +347,25 @@ $cbNetReset.Text     = 'Réinitialiser le réseau (non réversible)'
 $cbNetReset.AutoSize = $true
 # $cbNetReset.Checked reste $false (décoché par défaut)
 
+# Export de la clé de récupération BitLocker (module 16) : choix PAR INTERVENTION,
+# au même titre que la case Simulation. Aucun profil ne la porte et la cocher ne
+# fait donc JAMAIS basculer la liste sur (personnalisé) : un secret ne se coche
+# pas durablement dans un JSON. Elle écrit une clé en clair sur la clé USB, sa
+# place est donc la carte des actions sensibles, résumé de la barre compris.
+# Le libellé mesure 248 px (Segoe UI 9.75) et démarre à x=15 : il finit à 263,
+# soit 62 px de marge dans la carte la plus étroite (325 px à la taille mini).
+$cbBitLocker = New-Object System.Windows.Forms.CheckBox
+$cbBitLocker.Text     = 'Exporter la clé BitLocker dans le coffre'
+$cbBitLocker.AutoSize = $true
+# $cbBitLocker.Checked reste $false (décoché par défaut)
+
 $cbRecycle.Font  = New-Object System.Drawing.Font('Segoe UI', 9.75)
 $cbWinOld.Font   = New-Object System.Drawing.Font('Segoe UI', 9.75)
 $cbCache.Font    = New-Object System.Drawing.Font('Segoe UI', 9.75)
 $cbOneDrive.Font = New-Object System.Drawing.Font('Segoe UI', 9.75)
 $cbOem.Font      = New-Object System.Drawing.Font('Segoe UI', 9.75)
 $cbNetReset.Font = New-Object System.Drawing.Font('Segoe UI', 9.75)
+$cbBitLocker.Font = New-Object System.Drawing.Font('Segoe UI', 9.75)
 
 $cbRecycle.ForeColor  = ConvertTo-KitColor $script:Palette.Ink
 $cbWinOld.ForeColor   = ConvertTo-KitColor $script:Palette.Ink
@@ -357,6 +373,7 @@ $cbCache.ForeColor    = ConvertTo-KitColor $script:Palette.Ink
 $cbOneDrive.ForeColor = ConvertTo-KitColor $script:Palette.Ink
 $cbOem.ForeColor      = ConvertTo-KitColor $script:Palette.Ink
 $cbNetReset.ForeColor = ConvertTo-KitColor $script:Palette.Ink
+$cbBitLocker.ForeColor = ConvertTo-KitColor $script:Palette.Ink
 
 $cbRecycle.Location  = New-Object System.Drawing.Point(15, 30)
 $cbWinOld.Location   = New-Object System.Drawing.Point(15, 52)
@@ -364,7 +381,8 @@ $cbCache.Location    = New-Object System.Drawing.Point(15, 74)
 $cbOneDrive.Location = New-Object System.Drawing.Point(15, 96)
 $cbOem.Location      = New-Object System.Drawing.Point(15, 118)
 $cbNetReset.Location = New-Object System.Drawing.Point(15, 140)
-$cardSensitive.Controls.AddRange(@($cbRecycle, $cbWinOld, $cbCache, $cbOneDrive, $cbOem, $cbNetReset))
+$cbBitLocker.Location = New-Object System.Drawing.Point(15, 162)
+$cardSensitive.Controls.AddRange(@($cbRecycle, $cbWinOld, $cbCache, $cbOneDrive, $cbOem, $cbNetReset, $cbBitLocker))
 
 $script:HostRight.Controls.Add($cardSettings)
 $script:HostRight.Controls.Add($cardSensitive)
@@ -851,6 +869,7 @@ $helpBindings = @(
     @{ Ctrl = $cbOneDrive;        Key = 'option.onedrive' }
     @{ Ctrl = $cbOem;             Key = 'option.oem' }
     @{ Ctrl = $cbNetReset;        Key = 'option.netreset' }
+    @{ Ctrl = $cbBitLocker;       Key = 'option.bitlockerkey' }
     @{ Ctrl = $cbDryRun;          Key = 'option.dryrun' }
     @{ Ctrl = $rbStd;             Key = 'account.standard' }
     @{ Ctrl = $rbKeep;            Key = 'account.keepadmin' }
@@ -1036,6 +1055,9 @@ function Build-Queue {
         OneDrive      = $cbOneDrive.Checked
         NetReset      = $cbNetReset.Checked
         StartupKeep   = $script:ProfileStartupKeep
+        # Option par intervention (module 16), lue à l'instant du lancement et
+        # jamais persistée : elle ne transite par aucun profil.
+        BitLockerExport = $cbBitLocker.Checked
     }
 
     foreach ($mod in $script:Modules) {
@@ -1051,7 +1073,7 @@ function Update-KitActionSummary {
     # NOTE pipeline : le tableau DOIT être construit avant le Where-Object,
     # sinon le pipe ne s'applique qu'au dernier élément de la liste.
     $checked = @(Get-KitCheckedIds)
-    $sensitives = @(@($cbRecycle, $cbWinOld, $cbCache, $cbOneDrive, $cbOem, $cbNetReset) |
+    $sensitives = @(@($cbRecycle, $cbWinOld, $cbCache, $cbOneDrive, $cbOem, $cbNetReset, $cbBitLocker) |
                     Where-Object { $_.Checked })
     # Le profil AFFICHÉ est celui réellement appliqué : depuis la v2.3 la sélection
     # applique, et une case modifiée à la main le fait passer à « personnalisé ».
@@ -1281,7 +1303,7 @@ function Set-KitPrepareEnabled {
     param([Parameter(Mandatory)][bool]$Enabled)
     foreach ($m in $script:Modules) { $script:ModuleRows[$m.Id].CheckBox.Enabled = $Enabled }
     foreach ($c in @($cmbDebloat, $rbStd, $rbKeep, $cbBackupData, $cbScanDefender, $cbDryRun,
-                     $cbRecycle, $cbWinOld, $cbCache, $cbOneDrive, $cbOem, $cbNetReset,
+                     $cbRecycle, $cbWinOld, $cbCache, $cbOneDrive, $cbOem, $cbNetReset, $cbBitLocker,
                      $cmbProfile, $btnSaveProfile)) {
         $c.Enabled = $Enabled
     }
@@ -1346,7 +1368,10 @@ Update-KitRunButtonText
 # un APPEL : en PowerShell, une définition de fonction doit avoir été exécutée pour
 # être appelable. Les corps de handler, eux, ne s'exécutent qu'aux événements : ils
 # peuvent nommer des fonctions déclarées plus bas dans le fichier.
-foreach ($cbSensitive in @($cbRecycle, $cbWinOld, $cbCache, $cbOneDrive, $cbOem, $cbNetReset)) {
+# $cbBitLocker compte dans le résumé (elle écrit un secret sur la clé) mais reste
+# absente de la boucle de divergence plus bas : hors profils, donc hors bascule
+# sur (personnalisé).
+foreach ($cbSensitive in @($cbRecycle, $cbWinOld, $cbCache, $cbOneDrive, $cbOem, $cbNetReset, $cbBitLocker)) {
     $cbSensitive.Add_CheckedChanged({ Update-KitActionSummary })
 }
 $cbDryRun.Add_CheckedChanged({
@@ -1790,6 +1815,7 @@ function Get-KitPreviewData {
         Running = @(
             @{ Id='00'; State='Ok';      Detail='00:45' }
             @{ Id='01'; State='Ok';      Detail='08:05' }
+            @{ Id='16'; State='Ok';      Detail='02:20' }
             @{ Id='02'; State='Running'; Detail='en cours - 03:12' }
         )
         DoneWarn = '05'
@@ -1799,7 +1825,7 @@ function Get-KitPreviewData {
         # l'aperçu reproduit ce format exact plutôt qu'une forme à lui. Un seul
         # avertissement ici, comme dans le bilan de clôture : singulier.
         DoneDurations = @{
-            '00'='00:45'; '01'='08:05'; '02'='11:30'; '03'='06:12'; '04'='01:08'
+            '00'='00:45'; '01'='08:05'; '16'='02:20'; '02'='11:30'; '03'='06:12'; '04'='01:08'
             '05'='21:35 - 1 avertissement'; '06'='04:55'; '07'='07:40'; '08'='00:38'
             '09'='00:22'; '11'='00:51'; '12'='00:14'; '13'='00:29'; '10'='00:18'
         }
@@ -1831,8 +1857,9 @@ if ($UiPreview -and $PreviewPhase -ne 'Prepare') {
         # montrer tel quel, sinon la capture du README annonce une échappatoire
         # grisée. Le handler ne fait rien ici, aucun run n'est en cours.
         $btnCancel.Enabled = $true
-        $script:ActionSummary.Text = 'Étape 3/14 - Antivirus - écoulé 12:40'
-        Set-KitActionProgress -Current 2 -Total 14
+        # 16 étapes cochées moins Réseau, ignoré : 15 à exécuter, dont 3 finies.
+        $script:ActionSummary.Text = 'Étape 4/15 - Antivirus - écoulé 15:00'
+        Set-KitActionProgress -Current 3 -Total 15
         foreach ($demo in @(
             '[14:11:58] [INFO] Module 02 Antivirus : démarrage',
             '[14:12:03] [OK] Avast désinstallé proprement',
@@ -1863,12 +1890,12 @@ if ($UiPreview -and $PreviewPhase -ne 'Prepare') {
         # action destructrice de la page, un aperçu ne doit jamais l'ouvrir.
         $btnReport.Enabled = $true
         Show-KitClosePhase -RebootRequired $true
-        # Bilan calé sur la timeline juste au-dessus : 15 modules, un seul en
-        # avertissement (05), un seul ignoré (15), donc 13 OK. La durée totale
-        # dépasse la somme des durées affichées (1:04:42) du temps de lancement
+        # Bilan calé sur la timeline juste au-dessus : 16 étapes, une seule en
+        # avertissement (05), une seule ignorée (15), donc 14 OK. La durée totale
+        # dépasse la somme des durées affichées (1:07:02) du temps de lancement
         # des processus.
         Set-KitActionPhase -Phase Done -Data @{
-            Bilan = Get-RunDoneText -CountOK 13 -CountWarn 1 -CountError 0 -Elapsed '1:05:12'
+            Bilan = Get-RunDoneText -CountOK 14 -CountWarn 1 -CountError 0 -Elapsed '1:07:32'
         }
     }
 }
@@ -1952,9 +1979,12 @@ if ($SelfTest) {
     $cbRecycle.Checked = -not $cbRecycle.Checked
     Assert-KitSelfTest 'divergence option : etiquette (personnalise)' ([string]$cmbProfile.SelectedItem -eq $script:CustomProfileLabel)
 
-    # 6. Étapes : numérotation 1..15 et labels français aux deux bouts.
+    # 6. Étapes : numérotation 1..16 et labels français aux deux bouts.
     Assert-KitSelfTest 'timeline : ligne 1 = Diagnostic' ($script:ModuleRows['00'].IdLabel.Text -eq '1' -and $script:ModuleRows['00'].NameLabel.Text -eq 'Diagnostic')
-    Assert-KitSelfTest 'timeline : ligne 15 = Rapport' ($script:ModuleRows['10'].IdLabel.Text -eq '15' -and $script:ModuleRows['10'].NameLabel.Text -eq 'Rapport')
+    Assert-KitSelfTest 'timeline : ligne 16 = Rapport' ($script:ModuleRows['10'].IdLabel.Text -eq '16' -and $script:ModuleRows['10'].NameLabel.Text -eq 'Rapport')
+    # v2.4 : les filets de secours s'arment juste après la sauvegarde, avant toute
+    # étape qui modifie le système, et le profil standard les coche d'office.
+    Assert-KitSelfTest 'timeline : ligne 3 = Filets de secours cochee' ($script:ModuleRows['16'].IdLabel.Text -eq '3' -and $script:ModuleRows['16'].NameLabel.Text -eq 'Filets de secours' -and $script:ModuleRows['16'].CheckBox.Checked)
 
     # 6 bis. Correspondance sur TOUTE la liste, pas seulement aux deux bouts :
     # chaque module porte son rang sur la timeline ET le titre de sa rubrique
@@ -1974,8 +2004,24 @@ if ($SelfTest) {
         $titre  = if ($entree.PSObject.Properties['title']) { [string]$entree.title } else { '' }
         if ($titre -notmatch "^Étape $pos(?!\d)") { $titreOk = $false }
     }
-    Assert-KitSelfTest 'timeline : 15 positions conformes' ($posOk -and $pos -eq 15)
-    Assert-KitSelfTest 'aide : 15 titres Etape N conformes' ($titreOk -and $pos -eq 15)
+    Assert-KitSelfTest 'timeline : 16 positions conformes' ($posOk -and $pos -eq 16)
+    Assert-KitSelfTest 'aide : 16 titres Etape N conformes' ($titreOk -and $pos -eq 16)
+
+    # 6 ter. Option par intervention (module 16) : décochée à l'ouverture, et la
+    # cocher ne fait PAS diverger le profil - elle ne vit dans aucun JSON.
+    # La vérification repart d'un profil NOMMÉ : depuis (personnalisé), où l'étape
+    # 5 a laissé la liste, l'étiquette ne pourrait de toute façon plus bouger et
+    # l'assertion passerait pour de mauvaises raisons.
+    $cmbProfile.SelectedItem = 'standard'
+    Assert-KitSelfTest 'option BitLocker : decochee, application de profil comprise' (-not $cbBitLocker.Checked)
+    $resumeAvant = [string]$script:ActionSummary.Text
+    $cbBitLocker.Checked = $true
+    $sansDivergence = ([string]$cmbProfile.SelectedItem -eq 'standard')
+    # Elle compte en revanche dans le résumé des actions sensibles : elle écrit
+    # une clé de déchiffrement en clair sur la clé USB. Le résumé DOIT bouger.
+    $dansResume = ([string]$script:ActionSummary.Text -ne $resumeAvant)
+    $cbBitLocker.Checked = $false
+    Assert-KitSelfTest 'option BitLocker : hors profils, aucune divergence' ($sansDivergence -and $dansResume)
 
     # 7. Mode : le bouton principal suit la case Simulation.
     $cbDryRun.Checked = $true
@@ -2006,8 +2052,8 @@ if ($SelfTest) {
     # couvre tout ce qui ferait sauter des assertions sans lever (retour anticipé,
     # bloc supprimé par mégarde). Le nombre attendu se met à jour à la main quand
     # une assertion est ajoutée ; la ligne de succès, elle, reste dynamique.
-    if ($script:SelfTestCount -lt 24) {
-        Write-Host "[SELFTEST] ECHEC : $script:SelfTestCount assertion(s) executee(s) sur 24 attendues"
+    if ($script:SelfTestCount -lt 27) {
+        Write-Host "[SELFTEST] ECHEC : $script:SelfTestCount assertion(s) executee(s) sur 27 attendues"
         exit 1
     }
     # Compte tenu à l'exécution : ajouter une assertion ne peut pas laisser

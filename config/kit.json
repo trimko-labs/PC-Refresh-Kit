@@ -5,5 +5,7 @@
   "downloadTimeoutSeconds": 60,
   "diskWarnFreePct": 15,
   "diskErrorFreePct": 5,
-  "restorePointMaxAgeHours": 4
+  "restorePointMaxAgeHours": 4,
+  "diskWarnFloorGB": 20,
+  "diskErrorFloorGB": 10
 }

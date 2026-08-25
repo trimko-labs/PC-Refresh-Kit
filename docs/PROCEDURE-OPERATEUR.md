@@ -26,7 +26,7 @@ Regle d'or : **lancer le kit depuis la session du proprietaire du PC** (son comp
 
 L'interface suit le geste de l'intervention et se lit toujours de la même façon :
 
-- **Préparer** : profil d'intervention et étapes 1 à 15 à gauche, réglages au centre, actions sensibles à droite. Le profil standard est appliqué à l'ouverture, et choisir un autre profil applique ses cases aussitôt. Survoler un élément affiche son explication dans l'onglet **Aide**. La barre d'action en bas résume ce qui sera fait et porte le bouton principal : LANCER L'INTERVENTION, ou LANCER LA SIMULATION quand la case Simulation est cochée.
+- **Préparer** : profil d'intervention et étapes 1 à 16 à gauche, réglages au centre, actions sensibles à droite. Le profil standard est appliqué à l'ouverture, et choisir un autre profil applique ses cases aussitôt. Survoler un élément affiche son explication dans l'onglet **Aide**. La barre d'action en bas résume ce qui sera fait et porte le bouton principal : LANCER L'INTERVENTION, ou LANCER LA SIMULATION quand la case Simulation est cochée.
 - **Exécuter** : la colonne de gauche devient le déroulé (chaque étape affiche son état et sa durée), l'onglet **Journal** s'ajoute et défile, la barre du bas affiche la progression et le bouton Annuler.
 - **Clôturer** : un onglet **Clôture** apparaît avec la passphrase administrateur masquée (boutons Afficher et Copier), la checklist « Avant de rendre le PC » et l'accès au rapport.
 

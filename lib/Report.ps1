@@ -58,7 +58,8 @@ function Get-EndChecklistItems {
         "Récupérer la passphrase admin : onglet Clôture du cockpit (bouton Afficher) ou fichier runtime\FICHE-PC-<PC>.txt",
         "Se connecter une fois au compte Admin-Local pour vérifier le mot de passe",
         "Vérifier que la session du propriétaire s'ouvre (elle est en standard)",
-        "Lire le rapport et vérifier le nombre d'ERROR"
+        "Lire le rapport et vérifier le nombre d'ERROR",
+        "Coffre de ruches à jour (module Filets de secours en OK)"
     )
     if ($RebootRequired -eq $true) {
         $items += "REDÉMARRER le PC avant de le rendre (REBOOT REQUIS détecté)"
@@ -192,7 +193,7 @@ function ConvertTo-HtmlEncoded {
 # Get-KitVersion : version courante du kit, source unique. Utilisée dans le
 # rapport (module 10). Centralise ce qui était codé en dur.
 # ---------------------------------------------------------------------------
-function Get-KitVersion { return 'v2.3' }
+function Get-KitVersion { return 'v2.4' }
 
 # ---------------------------------------------------------------------------
 # Remove-PasswordLines : retire d'un bloc de texte toute ligne portant un mot
@@ -344,7 +345,8 @@ function ConvertTo-ReportHtml {
         [string[]]$Volumes = @(),
         [string[]]$Antivirus = @(),
         [AllowNull()][object]$Delta  = $null,
-        [AllowNull()][object]$Health = $null
+        [AllowNull()][object]$Health = $null,
+        [AllowNull()][object]$Resilience = $null
     )
 
     # Normalise les métadonnées : toutes les clés attendues présentes et déjà échappées HTML.
@@ -374,6 +376,8 @@ function ConvertTo-ReportHtml {
   .badges { display:flex; gap:12px; margin:16px 0; flex-wrap:wrap; }
   .badge { border-radius:8px; padding:10px 16px; font-weight:600; color:#fff; }
   .b-ok { background:#16a34a; } .b-warn { background:#d97706; } .b-err { background:#dc2626; }
+  .pill { display:inline-block; border-radius:999px; padding:2px 10px; margin-right:8px; font-size:12px; font-weight:600; color:#fff; }
+  .p-ok { background:#16a34a; } .p-warn { background:#d97706; } .p-err { background:#dc2626; } .p-info { background:#64748b; }
   table { border-collapse:collapse; width:100%; margin:8px 0; font-size:14px; }
   th,td { border:1px solid var(--line); padding:8px 10px; text-align:left; }
   th { background:#f8fafc; }
@@ -520,6 +524,138 @@ function ConvertTo-ReportHtml {
             $actOk    = $act.PSObject.Properties['IsActivated'] -and [bool]$act.IsActivated
             $actStyle = if (-not $actOk) { ' style="color:#dc2626"' } else { '' }
             [void]$sb.Append("<p style=`"font-weight:600;margin:12px 0 4px`">Activation Windows</p><p$actStyle>$actLabel</p>")
+        }
+    }
+
+    # --- Filets de sécurité (sentinelle résilience du module 00, v2.4) ---
+    # Section absente d'un diagnostic antérieur à v2.4 : la carte est omise, jamais
+    # d'erreur. Chaque champ est lu via Get-JsonProp (section partielle tolérée).
+    if ($null -ne $Resilience) {
+        $netRows = @()
+
+        $freeLvl = [string](Get-JsonProp $Resilience 'FreeSpaceLevel')
+        if ($freeLvl) {
+            # Le verdict combine pourcentage et plancher en Go : le texte le rappelle,
+            # sinon un petit disque sous le plancher se lit comme une saturation.
+            $freeTxt = switch ($freeLvl) {
+                'OK'      { 'suffisant' }
+                'WARN'    { 'faible : sous le pourcentage ou le plancher en Go du kit' }
+                'ERROR'   { 'critique : sous le pourcentage ou le plancher en Go du kit' }
+                'Unknown' { 'non mesurable' }
+                default   { $freeLvl }
+            }
+            $netRows += [PSCustomObject]@{ Label = 'Espace libre C:'; Text = $freeTxt; Level = $freeLvl }
+        }
+
+        $hiveLvl = [string](Get-JsonProp $Resilience 'HiveLevel')
+        if ($hiveLvl) {
+            $hiveReason = [string](Get-JsonProp $Resilience 'HiveReason')
+            $hiveTxt = if ($hiveLvl -eq 'OK') { 'récentes' }
+                       elseif (-not [string]::IsNullOrWhiteSpace($hiveReason)) { $hiveReason }
+                       else { 'non mesurable' }
+            $netRows += [PSCustomObject]@{ Label = 'Écritures du registre'; Text = $hiveTxt; Level = $hiveLvl }
+        }
+
+        # Restauration système : le compte peut valoir $null (sonde muette côté
+        # module 00). La carte n'affirme jamais « active » ni « désactivée » sans
+        # mesure : elle rend alors une ligne neutre. Un zéro MESURÉ reste une
+        # alerte même service actif - un service sans aucun point n'est pas un filet.
+        $restEnabProp  = $Resilience.PSObject.Properties['RestoreEnabled']
+        $restCountProp = $Resilience.PSObject.Properties['RestorePointCount']
+        if ($restEnabProp -or $restCountProp) {
+            $restEnabled = if ($restEnabProp)  { $restEnabProp.Value }  else { $null }
+            $restCount   = if ($restCountProp) { $restCountProp.Value } else { $null }
+            if ($null -eq $restEnabled -or $null -eq $restCount) {
+                $netRows += [PSCustomObject]@{
+                    Label = 'Restauration système'; Text = 'état non lisible'; Level = 'INFO'
+                }
+            }
+            else {
+                $rpN   = [int]$restCount
+                $rpOn  = ($restEnabled -eq $true)
+                $rpTxt = if ($rpOn -and $rpN -gt 0) { "active, $rpN point(s)" }
+                         elseif ($rpOn) { 'active mais aucun point présent' }
+                         elseif ($rpN -gt 0) { "désactivée, $rpN point(s) restant(s)" }
+                         else { 'désactivée, aucun point présent' }
+                $netRows += [PSCustomObject]@{
+                    Label = 'Restauration système'; Text = $rpTxt
+                    Level = $(if ($rpOn -and $rpN -gt 0) { 'OK' } else { 'WARN' })
+                }
+            }
+        }
+
+        # Même règle : $null = réserve non mesurée (CIM muet), $false = mesurée
+        # et insuffisante. Seul le $false autorise à écrire « insuffisante ».
+        $shadowProp = $Resilience.PSObject.Properties['ShadowAdequate']
+        if ($shadowProp) {
+            $shadowOk = $shadowProp.Value
+            if ($null -eq $shadowOk) {
+                $netRows += [PSCustomObject]@{
+                    Label = 'Réserve de clichés'; Text = 'état non lisible'; Level = 'INFO'
+                }
+            }
+            else {
+                $netRows += [PSCustomObject]@{
+                    Label = 'Réserve de clichés'
+                    Text  = $(if ($shadowOk -eq $true) { 'adéquate' } else { 'insuffisante ou absente' })
+                    Level = $(if ($shadowOk -eq $true) { 'OK' } else { 'WARN' })
+                }
+            }
+        }
+
+        # WinRE et recoveryenabled remontent les valeurs brutes des outils Windows
+        # (Enabled/Disabled, Yes/No/Absent) : traduites pour l'opérateur, le jeton
+        # technique reste affiché entre parenthèses pour le diagnostic.
+        $winReStatus = [string](Get-JsonProp $Resilience 'WinReStatus')
+        if ($winReStatus) {
+            $winReTxt = switch ($winReStatus) {
+                'Enabled'  { 'armé (Enabled)' }
+                'Disabled' { 'désarmé (Disabled)' }
+                'Unknown'  { 'état non lisible' }
+                default    { $winReStatus }
+            }
+            $netRows += [PSCustomObject]@{
+                Label = 'Environnement de récupération'; Text = $winReTxt
+                Level = [string](Get-JsonProp $Resilience 'WinReLevel')
+            }
+        }
+
+        $recStatus = [string](Get-JsonProp $Resilience 'RecoveryEnabledStatus')
+        if ($recStatus) {
+            $recTxt = switch ($recStatus) {
+                'Yes'     { 'active (Yes)' }
+                'Absent'  { 'absente du BCD' }
+                'Unknown' { 'état non lisible' }
+                default   { "inactive ($recStatus)" }
+            }
+            $netRows += [PSCustomObject]@{
+                Label = 'Auto-réparation au démarrage'; Text = $recTxt
+                Level = [string](Get-JsonProp $Resilience 'RecoveryEnabledLevel')
+            }
+        }
+
+        $blCard = Get-JsonProp $Resilience 'BitLockerC'
+        if ($blCard) {
+            $blReason = [string](Get-JsonProp $blCard 'Reason')
+            $netRows += [PSCustomObject]@{
+                Label = 'BitLocker C:'
+                Text  = $(if ($blReason) { $blReason } else { 'état non déterminé' })
+                Level = [string](Get-JsonProp $blCard 'Level')
+            }
+        }
+
+        if (@($netRows).Count -gt 0) {
+            [void]$sb.Append('<h2>Filets de sécurité</h2><table><tr><th>Filet</th><th>État</th></tr>')
+            foreach ($row in $netRows) {
+                # INFO (BitLocker chiffré avec clé de récupération) : pastille neutre,
+                # ce n'est pas une alerte mais une consigne de vérification.
+                $pillCls = switch ($row.Level) { 'OK' { 'p-ok' } 'WARN' { 'p-warn' } 'ERROR' { 'p-err' } default { 'p-info' } }
+                $pillTxt = switch ($row.Level) { 'OK' { 'OK' }   'WARN' { 'Attention' } 'ERROR' { 'Critique' } default { 'Info' } }
+                $rowLbl  = ConvertTo-HtmlEncoded ([string]$row.Label)
+                $rowTxt  = ConvertTo-HtmlEncoded ([string]$row.Text)
+                [void]$sb.Append("<tr><td>$rowLbl</td><td><span class=`"pill $pillCls`">$pillTxt</span>$rowTxt</td></tr>")
+            }
+            [void]$sb.Append('</table>')
         }
     }
 

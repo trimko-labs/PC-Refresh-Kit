@@ -13,6 +13,8 @@
 - Votre compte quotidien passe en mode standard (plus sécurisé)
 - Extensions de fichiers rendues visibles dans l'explorateur
 - Publicités et suggestions du menu Démarrer désactivées
+- Filets de sécurité de Windows remis en service (restauration système, réparation au démarrage)
+  et copie de sauvegarde de la configuration système, à la date de l'intervention
 
 ## Navigateur par défaut
 
@@ -63,5 +65,17 @@ Ne jamais entrer ce mot de passe si vous n'avez pas demandé d'installer quelque
 2. Vérifier les notifications Windows (icône cloche en bas à droite)
 3. Lancer Windows Update (Paramètres > Windows Update) si un message le recommande
 4. Contacter votre technicien avec le nom du PC et la date d'intervention (voir fiche PC)
+
+## Si le PC ne démarre plus du tout
+
+Appeler le technicien avant d'envisager une réinstallation. Une copie de la configuration système
+a été mise de côté le jour de l'intervention, sur ce PC et sur la clé du technicien : elle permet
+souvent de repartir sans rien perdre.
+
+Deux choses à préparer avant son passage, sinon le PC peut redémarrer sans que la session s'ouvre :
+
+- le mot de passe de votre compte Microsoft **et** le téléphone qui reçoit les codes de
+  confirmation ;
+- votre code PIN de session.
 
 {{BITLOCKER_NOTE}}

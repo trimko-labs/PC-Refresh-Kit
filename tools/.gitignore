@@ -2,3 +2,29 @@
 !README.md
 !.gitignore
 !Build-ReleaseZip.ps1
+# regf/ : atelier expert versionne. Le dossier doit etre re-inclus AVANT son
+# contenu, git ne descendant pas dans un dossier exclu.
+!regf/
+# Liste BLANCHE stricte : seules les sources suivies sont re-incluses, jamais
+# "regf/**". Le README dit a l'operateur de travailler DANS ce dossier
+# (py -3 analyse_regf.py RUCHE) : une vraie ruche client y atterrit, bourree de
+# chemins de profils nominatifs. Test-KitAnonymity lit du texte, pas du binaire,
+# donc un "git add -A" la publierait sans que rien ne l'arrete. Une ruche
+# deposee ici ne doit JAMAIS etre committable.
+!regf/*.py
+!regf/README.md
+# Ceinture et bretelles : meme si la liste blanche etait relachee un jour, les
+# artefacts de ruche et de journal restent exclus nommement.
+regf/*.dat
+regf/*.hiv
+regf/*.hive
+regf/*.bak
+regf/*.LOG*
+regf/SYSTEM
+regf/SOFTWARE
+regf/SAM
+regf/SECURITY
+regf/DEFAULT
+regf/NTUSER.DAT
+# Cache d'octets Python : recree a chaque import, jamais versionne.
+regf/__pycache__/

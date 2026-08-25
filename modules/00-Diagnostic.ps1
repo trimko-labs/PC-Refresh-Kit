@@ -122,12 +122,17 @@ foreach ($vol in $volumes) {
     if ($vol.DriveLetter -eq 'C') {
         $volLevel = Get-DiskSpaceLevel -FreePct $pctLibre -WarnPct $kitCfg.diskWarnFreePct -ErrorPct $kitCfg.diskErrorFreePct
     }
-    Write-KitLog -Message "Volume $($vol.DriveLetter): $libreGB Go libres / $totalGB Go ($pctLibre% libre)" -Level $volLevel
+    # Doctrine de journalisation : un volume saturé est un fait constaté sur la
+    # machine, pas une panne du diagnostic - le journal est donc plafonné à WARN
+    # (même règle que Write-SentinelLog plus bas). La sévérité réelle reste dans
+    # le bloc Resilience du JSON et dans la pastille du rapport HTML.
+    $volLogLevel = if ($volLevel -eq 'ERROR') { 'WARN' } else { $volLevel }
+    Write-KitLog -Message "Volume $($vol.DriveLetter): $libreGB Go libres / $totalGB Go ($pctLibre% libre)" -Level $volLogLevel
     if ($volLevel -eq 'WARN') {
         Write-KitLog -Message "Espace faible sur C: (moins de $($kitCfg.diskWarnFreePct)% libres) : le module 07 (nettoyage) est prioritaire." -Level 'WARN'
     }
     elseif ($volLevel -eq 'ERROR') {
-        Write-KitLog -Message "Espace CRITIQUE sur C: (moins de $($kitCfg.diskErrorFreePct)% libres) : lancer le module 07 en priorité absolue, certaines opérations (DISM, mises à jour) échoueront." -Level 'ERROR'
+        Write-KitLog -Message "Espace critique sur C: (moins de $($kitCfg.diskErrorFreePct)% libres) : lancer le module 07 en priorité absolue, certaines opérations (DISM, mises à jour) échoueront." -Level 'WARN'
     }
     $diskType = Get-DiskType -DriveLetter $vol.DriveLetter
     $volumeResults += [PSCustomObject]@{
@@ -187,6 +192,230 @@ if (@($bitlockerResults).Count -gt 0) {
     foreach ($b in $bitlockerResults) {
         Write-KitLog -Message "BitLocker $($b.DriveLetter) : $($b.Label)" -Level 'INFO'
     }
+}
+
+# -----------------------------------------------------------------------
+# Sentinelle résilience (v2.4) : les filets Windows sont-ils vivants ?
+# Origine : intervention du 21/08/2026, tous les filets morts silencieusement
+# (restauration désactivée, RegBack vide, WinRE désarmé, disque saturé).
+# Lecture seule ; les réarmements sont dans le module 16.
+# -----------------------------------------------------------------------
+
+# Doctrine du journal, appliquée par tout le module : le journal décrit
+# l'EXÉCUTION du module, jamais la santé de la machine - un disque sous le
+# plancher, un BitLocker sans clé de récupération ou des ruches figées sont des
+# faits constatés, pas des pannes du diagnostic. Les verdicts de santé y sont
+# donc journalisés au maximum en WARN (ici par plafonnement, en clair dans la
+# boucle des volumes plus haut) ; le canal de santé est ailleurs, dans le bloc
+# Resilience du JSON et dans la pastille de la carte « Filets de sécurité » du
+# rapport HTML, où la sévérité réelle est conservée.
+function Write-SentinelLog {
+    param(
+        [Parameter(Mandatory)][string]$Message,
+        [ValidateSet('INFO','OK','WARN','ERROR')][string]$Level = 'INFO'
+    )
+    $capped = if ($Level -eq 'ERROR') { 'WARN' } else { $Level }
+    Write-KitLog -Message $Message -Level $capped
+}
+
+Write-SentinelLog -Message "Sentinelle résilience : vérification des filets de sécurité..." -Level 'INFO'
+
+# Espace libre C: avec planchers absolus (le pourcentage seul a laissé passer
+# la saturation du 21/08 : fsutil négatif au moment du crash).
+$volC = $volumeResults | Where-Object { $_.DriveLetter -eq 'C' } | Select-Object -First 1
+# 'Unknown' et non 'OK' par défaut : sans volume C: dans la collecte, rien n'a
+# été mesuré et la carte doit le dire plutôt que d'afficher un filet sain.
+$freeSpaceLevel = 'Unknown'
+if ($volC) {
+    $freeSpaceLevel = Get-FreeSpaceVerdict -FreeBytes ([int64]$volC.FreeBytes) `
+        -TotalBytes ([int64]($volC.SizeGB * 1GB)) `
+        -WarnPct $kitCfg.diskWarnFreePct -ErrorPct $kitCfg.diskErrorFreePct `
+        -WarnFloorGB $kitCfg.diskWarnFloorGB -ErrorFloorGB $kitCfg.diskErrorFloorGB
+    if ($freeSpaceLevel -ne 'OK') {
+        # Le verdict combine pourcentage ET plancher en Go : le message dit lequel
+        # a parlé, sinon un petit disque (eMMC 32 Go) passe pour saturé alors qu'il
+        # est simplement sous le plancher absolu par construction.
+        Write-SentinelLog -Message "Espace libre C: sous les seuils de sécurité du registre : $($volC.FreeGB) Go libres sur $($volC.SizeGB) Go ($($volC.FreePct)% libre)." -Level $freeSpaceLevel
+        Write-SentinelLog -Message "Seuils appliqués : avertissement sous $($kitCfg.diskWarnFreePct)% ou $($kitCfg.diskWarnFloorGB) Go libres, critique sous $($kitCfg.diskErrorFreePct)% ou $($kitCfg.diskErrorFloorGB) Go. Sur un volume de moins de $($kitCfg.diskWarnFloorGB) Go au total, le verdict est structurel et non une saturation. Sans marge, le registre peut ne plus écrire ses transactions." -Level 'INFO'
+    }
+}
+else {
+    Write-SentinelLog -Message "Espace libre C: non mesurable : aucun volume C: dans la collecte." -Level 'INFO'
+}
+
+# Fraîcheur des ruches : SYSTEM qui ne s'écrit plus = pré-crash détectable.
+$hiveLag = $null
+try {
+    $sysHive  = Get-Item "$env:SystemRoot\System32\config\SYSTEM" -ErrorAction Stop
+    $softHive = Get-Item "$env:SystemRoot\System32\config\SOFTWARE" -ErrorAction Stop
+    $hiveLag = Test-HiveFreshnessAlert -SystemLastWrite $sysHive.LastWriteTime -SoftwareLastWrite $softHive.LastWriteTime
+    if ($hiveLag.Level -ne 'OK') {
+        Write-SentinelLog -Message "Ruches registre : $($hiveLag.Reason) (retard : $($hiveLag.LagHours) h)" -Level $hiveLag.Level
+    }
+    else {
+        Write-SentinelLog -Message "Ruches registre : écritures récentes, rien à signaler." -Level 'OK'
+    }
+}
+catch { Write-SentinelLog -Message "Fraîcheur des ruches non mesurable : $_" -Level 'INFO' }
+
+# Restauration système : deux sondes distinctes, l'état du service (registre) et
+# le nombre de points (VSS, exige l'élévation). Séparées pour qu'une sonde muette
+# n'efface pas la mesure de l'autre.
+# $null = sonde muette (clé absente, valeur RPSessionInterval absente, lecture
+# refusée), distinct d'un $false mesuré : sans lecture réelle du registre, rien
+# n'autorise à écrire « restauration désactivée » - le rapport rend alors une
+# ligne neutre « état non lisible ».
+$restoreEnabled = $null
+try {
+    $srKey = Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore' -ErrorAction SilentlyContinue
+    if ($srKey -and $srKey.PSObject.Properties['RPSessionInterval']) {
+        $restoreEnabled = ([int]$srKey.RPSessionInterval -ge 1)
+    }
+    else {
+        Write-SentinelLog -Message "État du service de restauration système non lisible (valeur RPSessionInterval absente) : aucune conclusion sur son activation." -Level 'INFO'
+    }
+}
+catch {
+    $restoreEnabled = $null
+    Write-SentinelLog -Message "État du service de restauration système non lisible : aucune conclusion sur son activation." -Level 'INFO'
+}
+
+# $null = sonde muette, distinct d'un zéro mesuré : « service actif, 0 point »
+# n'est pas un filet et doit alerter, alors qu'une sonde muette ne doit rien
+# affirmer du tout.
+$restoreCount = $null
+try {
+    # -ErrorAction Stop volontaire : en SilentlyContinue une requête refusée
+    # (session non élevée, VSS injoignable) renverrait un tableau vide,
+    # indiscernable d'un vrai « aucun point de restauration ».
+    $restoreCount = @(Get-ComputerRestorePoint -ErrorAction Stop).Count
+}
+catch {
+    $restoreCount = $null
+    Write-SentinelLog -Message "Nombre de points de restauration non lisible (sonde VSS muette)." -Level 'INFO'
+}
+# Les deux sondes doivent avoir mesuré : `-not $null` vaut $true, un état de
+# service non lu se journaliserait sinon en « DÉSACTIVÉE » sans aucune mesure.
+if ($null -ne $restoreCount -and $null -ne $restoreEnabled) {
+    if (-not $restoreEnabled -and $restoreCount -eq 0) {
+        Write-SentinelLog -Message "Restauration système : DÉSACTIVÉE et aucun point présent (aucun filet VSS - l'étape Sauvegarde la réactive et crée un point avant l'intervention)." -Level 'WARN'
+    }
+    elseif (-not $restoreEnabled) {
+        Write-SentinelLog -Message "Restauration système : DÉSACTIVÉE, $restoreCount point(s) encore présent(s) mais plus aucun nouveau (l'étape Sauvegarde la réactive avant l'intervention)." -Level 'WARN'
+    }
+    elseif ($restoreCount -eq 0) {
+        Write-SentinelLog -Message "Restauration système : active mais aucun point présent - rien à restaurer aujourd'hui (l'étape Sauvegarde en crée un avant l'intervention)." -Level 'WARN'
+    }
+}
+
+# Stockage de clichés (Win32_ShadowStorage : octets bruts, non localisés).
+$shadowMax = $null
+# $null = non mesuré, distinct de $false = mesuré et insuffisant : une sonde
+# muette ne doit pas faire écrire « réserve insuffisante » au rapport.
+$shadowAdequate = $null
+try {
+    $volCim = Get-CimInstance Win32_Volume -Filter "DriveLetter = 'C:'" -ErrorAction Stop | Select-Object -First 1
+    # Requête sans erreur mais sans volume renvoyé : rien n'a été mesuré, on sort
+    # par le catch plutôt que de conclure « réserve insuffisante » sur du vide.
+    if ($null -eq $volCim) { throw "volume C: absent de Win32_Volume" }
+    # -ErrorAction Stop volontaire : sans élévation la classe Win32_ShadowStorage
+    # refuse la requête (« Échec d'initialisation ») ; en SilentlyContinue ce refus
+    # devenait un tableau vide, donc « réserve insuffisante » sans rien avoir mesuré.
+    # Une requête qui aboutit et ne renvoie rien reste, elle, une vraie mesure.
+    $ss = @(Get-CimInstance Win32_ShadowStorage -ErrorAction Stop) | Where-Object {
+        $_.Volume.DeviceID -eq $volCim.DeviceID
+    } | Select-Object -First 1
+    if ($ss) { $shadowMax = [uint64]$ss.MaxSpace }
+    # Capacity peut être $null sans que StrictMode ne bronche ([int64]$null = 0) :
+    # conclure « réserve insuffisante » sur un volume non mesuré violerait la
+    # doctrine du bloc. Même garde que le module 16 avant sa décision de resize.
+    if ($null -eq $volCim.Capacity -or [int64]$volCim.Capacity -le 0) { throw "capacité du volume C: non mesurable" }
+    $shadowAdequate = Test-ShadowStorageAdequate -MaxSpaceBytes $shadowMax -VolumeSizeBytes ([int64]$volCim.Capacity) -MinPct 5
+    if (-not $shadowAdequate) {
+        Write-SentinelLog -Message "Stockage de clichés VSS : absent ou inférieur à 5% du volume (les points de restauration s'évaporent). Le module 16 l'agrandit." -Level 'WARN'
+    }
+}
+catch {
+    $shadowAdequate = $null
+    Write-SentinelLog -Message "Stockage de clichés non lisible : aucune conclusion sur la réserve VSS." -Level 'INFO'
+}
+
+# WinRE armé ? (reagentc /info : valeurs Enabled/Disabled non localisées)
+$winReVerdict = [PSCustomObject]@{ Status = 'Unknown'; Level = 'WARN' }
+try {
+    $reOut = @(& reagentc /info 2>&1 | ForEach-Object { [string]$_ })
+    $winReVerdict = Get-WinReVerdict -ReagentcOutput $reOut
+    Write-SentinelLog -Message "Environnement de récupération (WinRE) : $($winReVerdict.Status)" -Level $winReVerdict.Level
+}
+catch { Write-SentinelLog -Message "reagentc non exécutable." -Level 'INFO' }
+
+# Auto-réparation au boot (BCD recoveryenabled).
+$recVerdict = [PSCustomObject]@{ Status = 'Unknown'; Level = 'WARN' }
+try {
+    $bcdOut  = @(& bcdedit /enum '{default}' 2>&1 | ForEach-Object { [string]$_ })
+    $bcdExit = $LASTEXITCODE
+    if ($bcdExit -ne 0 -or @($bcdOut).Count -eq 0) {
+        # bcdedit a échoué (session non élevée, BCD illisible) : sa sortie est du
+        # bruit, la fonction pure y lirait « Absent » sans que rien n'ait été mesuré.
+        $recVerdict = [PSCustomObject]@{ Status = 'Unknown'; Level = 'WARN' }
+        Write-SentinelLog -Message "Auto-réparation au démarrage : bcdedit n'a rien renvoyé d'exploitable (code $bcdExit), état non mesuré." -Level 'INFO'
+    }
+    else {
+        $recVerdict = Get-RecoveryEnabledVerdict -BcdOutput $bcdOut
+        if ($recVerdict.Level -ne 'OK') {
+            Write-SentinelLog -Message "Auto-réparation au démarrage (recoveryenabled) : $($recVerdict.Status) - le module 16 la réarme." -Level 'WARN'
+        }
+    }
+}
+catch { Write-SentinelLog -Message "bcdedit non exécutable." -Level 'INFO' }
+
+# Verdict BitLocker C: (réutilise la collecte BitLocker ci-dessus).
+# Pas de $blC = la collecte n'a rien renvoyé pour C: (ni module BitLocker ni WMI,
+# ou lecture refusée) : rien n'a été mesuré. Appeler la fonction pure avec $null
+# rendrait « volume non protégé par BitLocker » au niveau OK, soit une pastille
+# verte affirmant qu'un disque jamais interrogé est en clair. Sonde muette = INFO.
+$blVerdict = [PSCustomObject]@{ Level = 'INFO'; Reason = 'état BitLocker non lisible' }
+try {
+    $blC = $bitlockerResults | Where-Object { ([string]$_.DriveLetter).TrimEnd(':') -eq 'C' } | Select-Object -First 1
+    if ($blC) {
+        $blVerdict = Get-BitLockerResilienceVerdict `
+            -ProtectionStatus $blC.ProtectionStatus `
+            -ProtectorTypes   $blC.ProtectorTypes
+    }
+    if ($blVerdict.Level -eq 'ERROR') {
+        # ERROR au call site (le verdict JSON et la pastille le restent) ; le journal
+        # est plafonné à WARN par Write-SentinelLog, cf. commentaire en tête de bloc.
+        Write-SentinelLog -Message "BitLocker C: : $($blVerdict.Reason)" -Level 'ERROR'
+    }
+    elseif ($blVerdict.Level -eq 'INFO') {
+        Write-SentinelLog -Message "BitLocker C: : $($blVerdict.Reason)" -Level 'INFO'
+    }
+}
+catch {
+    # Une collecte BitLocker biscornue ne doit jamais faire sortir le module avant
+    # l'écriture du JSON : verdict neutre, la sentinelle continue.
+    $blVerdict = [PSCustomObject]@{ Level = 'INFO'; Reason = 'état BitLocker non lisible' }
+    Write-SentinelLog -Message "Verdict BitLocker non calculable : aucune conclusion sur le chiffrement de C:." -Level 'INFO'
+}
+
+# Contrat JSON : toutes les clés sont toujours présentes. RestoreEnabled,
+# RestorePointCount et ShadowAdequate valent $null quand la sonde n'a rien pu
+# mesurer (ConvertTo-Json les sérialise en null) et BitLockerC tombe au niveau
+# INFO - le rapport rend alors une ligne neutre au lieu d'affirmer un état.
+$resilience = [PSCustomObject]@{
+    FreeSpaceLevel        = $freeSpaceLevel
+    HiveLagHours          = $(if ($hiveLag) { $hiveLag.LagHours } else { $null })
+    HiveLevel             = $(if ($hiveLag) { $hiveLag.Level }    else { 'Unknown' })
+    HiveReason            = $(if ($hiveLag) { $hiveLag.Reason }   else { '' })
+    RestoreEnabled        = $restoreEnabled
+    RestorePointCount     = $restoreCount
+    ShadowMaxBytes        = $shadowMax
+    ShadowAdequate        = $shadowAdequate
+    WinReStatus           = $winReVerdict.Status
+    WinReLevel            = $winReVerdict.Level
+    RecoveryEnabledStatus = $recVerdict.Status
+    RecoveryEnabledLevel  = $recVerdict.Level
+    BitLockerC            = [PSCustomObject]@{ Level = $blVerdict.Level; Reason = $blVerdict.Reason }
 }
 
 # ---------------------------------------------------------------------------
@@ -447,6 +676,7 @@ $diagJson = [PSCustomObject]@{
     StartupItemCount   = @($startupItems).Count
     Snapshot           = $snapshot
     AutorunsInventory  = $autorunsInventory
+    Resilience         = $resilience
 }
 
 $jsonPath = Join-Path $runtimeDir "diagnostic-$env:COMPUTERNAME.json"
