@@ -1,4 +1,4 @@
-# Procedure operateur - PC-Refresh-Kit
+﻿# Procedure operateur - PC-Refresh-Kit
 
 Checklist a suivre le jour de l'intervention, sur le PC d'un proche. A lire en entier avant le premier vrai PC. Le README documente les commandes ; ce fichier documente le deroule humain (quoi demander, verifier, remettre).
 

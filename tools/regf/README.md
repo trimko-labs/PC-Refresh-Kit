@@ -1,4 +1,4 @@
-# tools/regf - atelier de réparation de ruche registre (expert, hors release)
+﻿# tools/regf - atelier de réparation de ruche registre (expert, hors release)
 
 Outillage de DERNIER recours quand : le coffre du kit est vide, les clichés VSS
 sont morts, et la ruche cassée est le seul exemplaire. Situation type : un poste

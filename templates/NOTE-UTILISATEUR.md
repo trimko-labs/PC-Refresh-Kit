@@ -1,4 +1,4 @@
-# Note pour l'utilisateur
+﻿# Note pour l'utilisateur
 
 ## Ce qui a été fait sur ce PC
 

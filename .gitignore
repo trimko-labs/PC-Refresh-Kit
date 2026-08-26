@@ -12,3 +12,9 @@ docs/plans/
 testResults.xml
 secours/
 Coffre/
+# Coffre de ruches : ne jamais suivre une ruche client (hachages de mots de passe
+# + identité machine). Le vrai filet est le controle de contenu (entête regf) de
+# tests/Test-KitAnonymity.ps1 ; HiveVault/ et Coffre/ couvrent les dossiers du kit.
+HiveVault/
+*.hiv
+*.hive

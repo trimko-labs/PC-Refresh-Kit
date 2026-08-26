@@ -1690,7 +1690,13 @@ Describe 'Test-InKeepList' {
 # ---------------------------------------------------------------------------
 Describe 'Get-KitVersion' {
     It 'retourne la version courante du kit' {
-        Get-KitVersion | Should -Be 'v2.4'
+        Get-KitVersion | Should -Be 'v2.4.1'
+    }
+    It 'concorde avec la version par defaut de Build-ReleaseZip' {
+        $buildScript = Get-Content (Join-Path $PSScriptRoot '..\tools\Build-ReleaseZip.ps1') -Raw
+        $m = [regex]::Match($buildScript, '\[string\]\$Version\s*=\s*"([^"]+)"')
+        $m.Success | Should -BeTrue
+        "v$($m.Groups[1].Value)" | Should -Be (Get-KitVersion)
     }
 }
 

@@ -1,4 +1,4 @@
-# Documentation intégrée du cockpit - conception
+﻿# Documentation intégrée du cockpit - conception
 
 Date : 2026-08-14
 Version du kit visée : 2.2.0

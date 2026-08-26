@@ -1,4 +1,4 @@
-# PC-Refresh-Kit v2.2.0
+﻿# PC-Refresh-Kit v2.2.0
 
 **Date :** 2026-08-21
 **Licence :** MIT

@@ -1,4 +1,4 @@
-# Fiche PC - [NOM DU PC]
+﻿# Fiche PC - [NOM DU PC]
 
 Ce fichier est genere automatiquement par le module 10-Report.
 La version avec le mot de passe admin est dans runtime/FICHE-PC-[NOM].txt (non committee, locale uniquement).

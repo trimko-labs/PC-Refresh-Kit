@@ -330,10 +330,11 @@ catch { Write-KitLog -Message "bcdedit inaccessible : $_" -Level 'WARN' }
 # Stockage de clichés : agrandir à 10% si inadéquat. JAMAIS réduire (une
 # réduction purge des clichés existants).
 try {
-    $volCim = Get-CimInstance Win32_Volume -Filter "DriveLetter = 'C:'" -ErrorAction Stop | Select-Object -First 1
+    $sysDrive = $env:SystemDrive
+    $volCim = Get-CimInstance Win32_Volume -Filter "DriveLetter = '$sysDrive'" -ErrorAction Stop | Select-Object -First 1
     # Requête sans erreur mais sans volume : rien n'a été mesuré. Sortir par le
     # catch plutôt que de conclure « réserve insuffisante » sur du vide.
-    if ($null -eq $volCim) { throw "volume C: absent de Win32_Volume" }
+    if ($null -eq $volCim) { throw "volume $sysDrive absent de Win32_Volume" }
     # -ErrorAction Stop volontaire : sans élévation la classe Win32_ShadowStorage
     # refuse la requête ; en SilentlyContinue ce refus deviendrait un tableau vide,
     # donc un agrandissement décidé sans avoir rien mesuré.
@@ -347,20 +348,20 @@ try {
     # L'agrandissement partirait alors sur un volume jamais mesuré : sur un PC dont
     # la réserve dépasse déjà 10%, le resize la RÉDUIRAIT et purgerait les clichés
     # existants, c'est-à-dire le seul sens interdit ici.
-    if ($null -eq $volCim.Capacity -or [int64]$volCim.Capacity -le 0) { throw "capacité du volume C: non mesurable" }
+    if ($null -eq $volCim.Capacity -or [int64]$volCim.Capacity -le 0) { throw "capacité du volume $sysDrive non mesurable" }
     if (-not (Test-ShadowStorageAdequate -MaxSpaceBytes $maxNow -VolumeSizeBytes ([int64]$volCim.Capacity) -MinPct 5)) {
-        if ($WhatIf) { Write-KitLog -Message "WHATIF: Aurait agrandi le stockage de clichés VSS de C: à 10% (vssadmin resize/add)" -Level 'WHATIF' }
+        if ($WhatIf) { Write-KitLog -Message "WHATIF: Aurait agrandi le stockage de clichés VSS de $sysDrive à 10% (vssadmin resize/add)" -Level 'WHATIF' }
         else {
-            $rz     = @(& vssadmin resize shadowstorage /for=C: /on=C: /maxsize=10% 2>&1 | ForEach-Object { [string]$_ })
+            $rz     = @(& vssadmin resize shadowstorage /for=$sysDrive /on=$sysDrive /maxsize=10% 2>&1 | ForEach-Object { [string]$_ })
             $rzExit = $LASTEXITCODE
             if ($rzExit -ne 0) {
                 # Aucune association existante : la créer (cas restauration jamais activée).
-                $rz     = @(& vssadmin add shadowstorage /for=C: /on=C: /maxsize=10% 2>&1 | ForEach-Object { [string]$_ })
+                $rz     = @(& vssadmin add shadowstorage /for=$sysDrive /on=$sysDrive /maxsize=10% 2>&1 | ForEach-Object { [string]$_ })
                 $rzExit = $LASTEXITCODE
             }
             $avant = if ($null -eq $maxNow) { 'non configuré' } else { [math]::Round($maxNow / 1GB, 1).ToString() + ' Go' }
             if ($rzExit -eq 0) {
-                Write-KitLog -Message "Stockage de clichés VSS de C: porté à 10% (état avant : $avant)." -Level 'OK'
+                Write-KitLog -Message "Stockage de clichés VSS de $sysDrive porté à 10% (état avant : $avant)." -Level 'OK'
             }
             else {
                 # Jamais de « porté à 10% » sur un vssadmin en échec : la réserve
@@ -511,7 +512,7 @@ try {
     }
     if (-not $externalRoot) {
         $candidates = @(Get-Volume -ErrorAction Stop | Where-Object {
-            $_.DriveType -eq 'Removable' -and $_.DriveLetter -and $_.DriveLetter -ne 'C'
+            $_.DriveType -eq 'Removable' -and $_.DriveLetter -and "$($_.DriveLetter):" -ne $env:SystemDrive
         } | Sort-Object DriveLetter)
         if ($candidates.Count -gt 0) {
             $externalRoot = "$($candidates[0].DriveLetter):"
@@ -783,16 +784,16 @@ if ($ExportBitLockerKey) {
     else {
         $recoveryPass = $null
         try {
-            $blv = Get-BitLockerVolume -MountPoint 'C:' -ErrorAction Stop
+            $blv = Get-BitLockerVolume -MountPoint $env:SystemDrive -ErrorAction Stop
             if ($blv -and $blv.PSObject.Properties['KeyProtector']) {
                 $kp = @($blv.KeyProtector | Where-Object { [string]$_.KeyProtectorType -eq 'RecoveryPassword' }) | Select-Object -First 1
                 if ($kp -and $kp.PSObject.Properties['RecoveryPassword']) { $recoveryPass = [string]$kp.RecoveryPassword }
             }
         }
         catch {
-            # Fallback Home : manage-bde -protectors -get C: (parse du bloc Mot de passe numérique)
+            # Fallback Home : manage-bde -protectors -get $env:SystemDrive (parse du bloc Mot de passe numérique)
             try {
-                $mb = @(& manage-bde -protectors -get C: 2>&1 | ForEach-Object { [string]$_ })
+                $mb = @(& manage-bde -protectors -get $env:SystemDrive 2>&1 | ForEach-Object { [string]$_ })
                 foreach ($line in $mb) {
                     if ($line -match '^\s*(\d{6}-){7}\d{6}\s*$') { $recoveryPass = $line.Trim(); break }
                 }

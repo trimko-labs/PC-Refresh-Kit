@@ -1,4 +1,4 @@
-# Refonte cockpit Trimko + documentation intégrée - conception
+﻿# Refonte cockpit Trimko + documentation intégrée - conception
 
 Date : 2026-08-21
 Version du kit visée : 2.2.0

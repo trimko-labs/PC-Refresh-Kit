@@ -193,7 +193,7 @@ function ConvertTo-HtmlEncoded {
 # Get-KitVersion : version courante du kit, source unique. Utilisée dans le
 # rapport (module 10). Centralise ce qui était codé en dur.
 # ---------------------------------------------------------------------------
-function Get-KitVersion { return 'v2.4' }
+function Get-KitVersion { return 'v2.4.1' }
 
 # ---------------------------------------------------------------------------
 # Remove-PasswordLines : retire d'un bloc de texte toute ligne portant un mot

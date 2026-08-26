@@ -110,16 +110,17 @@ catch {
 }
 
 # Espace libre par lecteur
+$sysLetter = $env:SystemDrive.TrimEnd(':')   # 'C' sur un poste standard, sinon le vrai volume système
 $volumes = Get-Volume | Where-Object { $_.DriveType -eq 'Fixed' -and $_.DriveLetter }
 $volumeResults = @()
 foreach ($vol in $volumes) {
     $libreGB = [math]::Round($vol.SizeRemaining / 1GB, 1)
     $totalGB = [math]::Round($vol.Size / 1GB, 1)
     $pctLibre = if ($vol.Size -gt 0) { [math]::Round(100 * $vol.SizeRemaining / $vol.Size, 0) } else { 0 }
-    # Seuil d'alerte sur le volume système uniquement (C:) : Windows Update,
+    # Seuil d'alerte sur le volume système uniquement : Windows Update,
     # DISM et l'hibernation se dégradent sous ~15% libres.
     $volLevel = 'INFO'
-    if ($vol.DriveLetter -eq 'C') {
+    if ($vol.DriveLetter -eq $sysLetter) {
         $volLevel = Get-DiskSpaceLevel -FreePct $pctLibre -WarnPct $kitCfg.diskWarnFreePct -ErrorPct $kitCfg.diskErrorFreePct
     }
     # Doctrine de journalisation : un volume saturé est un fait constaté sur la
@@ -129,10 +130,10 @@ foreach ($vol in $volumes) {
     $volLogLevel = if ($volLevel -eq 'ERROR') { 'WARN' } else { $volLevel }
     Write-KitLog -Message "Volume $($vol.DriveLetter): $libreGB Go libres / $totalGB Go ($pctLibre% libre)" -Level $volLogLevel
     if ($volLevel -eq 'WARN') {
-        Write-KitLog -Message "Espace faible sur C: (moins de $($kitCfg.diskWarnFreePct)% libres) : le module 07 (nettoyage) est prioritaire." -Level 'WARN'
+        Write-KitLog -Message "Espace faible sur le volume système (moins de $($kitCfg.diskWarnFreePct)% libres) : le module 07 (nettoyage) est prioritaire." -Level 'WARN'
     }
     elseif ($volLevel -eq 'ERROR') {
-        Write-KitLog -Message "Espace critique sur C: (moins de $($kitCfg.diskErrorFreePct)% libres) : lancer le module 07 en priorité absolue, certaines opérations (DISM, mises à jour) échoueront." -Level 'WARN'
+        Write-KitLog -Message "Espace critique sur le volume système (moins de $($kitCfg.diskErrorFreePct)% libres) : lancer le module 07 en priorité absolue, certaines opérations (DISM, mises à jour) échoueront." -Level 'WARN'
     }
     $diskType = Get-DiskType -DriveLetter $vol.DriveLetter
     $volumeResults += [PSCustomObject]@{
@@ -222,7 +223,7 @@ Write-SentinelLog -Message "Sentinelle résilience : vérification des filets de
 
 # Espace libre C: avec planchers absolus (le pourcentage seul a laissé passer
 # la saturation du 21/08 : fsutil négatif au moment du crash).
-$volC = $volumeResults | Where-Object { $_.DriveLetter -eq 'C' } | Select-Object -First 1
+$volC = $volumeResults | Where-Object { $_.DriveLetter -eq $sysLetter } | Select-Object -First 1
 # 'Unknown' et non 'OK' par défaut : sans volume C: dans la collecte, rien n'a
 # été mesuré et la carte doit le dire plutôt que d'afficher un filet sain.
 $freeSpaceLevel = 'Unknown'
@@ -314,10 +315,11 @@ $shadowMax = $null
 # muette ne doit pas faire écrire « réserve insuffisante » au rapport.
 $shadowAdequate = $null
 try {
-    $volCim = Get-CimInstance Win32_Volume -Filter "DriveLetter = 'C:'" -ErrorAction Stop | Select-Object -First 1
+    $sysDrive = $env:SystemDrive
+    $volCim = Get-CimInstance Win32_Volume -Filter "DriveLetter = '$sysDrive'" -ErrorAction Stop | Select-Object -First 1
     # Requête sans erreur mais sans volume renvoyé : rien n'a été mesuré, on sort
     # par le catch plutôt que de conclure « réserve insuffisante » sur du vide.
-    if ($null -eq $volCim) { throw "volume C: absent de Win32_Volume" }
+    if ($null -eq $volCim) { throw "volume $sysDrive absent de Win32_Volume" }
     # -ErrorAction Stop volontaire : sans élévation la classe Win32_ShadowStorage
     # refuse la requête (« Échec d'initialisation ») ; en SilentlyContinue ce refus
     # devenait un tableau vide, donc « réserve insuffisante » sans rien avoir mesuré.
@@ -329,7 +331,7 @@ try {
     # Capacity peut être $null sans que StrictMode ne bronche ([int64]$null = 0) :
     # conclure « réserve insuffisante » sur un volume non mesuré violerait la
     # doctrine du bloc. Même garde que le module 16 avant sa décision de resize.
-    if ($null -eq $volCim.Capacity -or [int64]$volCim.Capacity -le 0) { throw "capacité du volume C: non mesurable" }
+    if ($null -eq $volCim.Capacity -or [int64]$volCim.Capacity -le 0) { throw "capacité du volume $sysDrive non mesurable" }
     $shadowAdequate = Test-ShadowStorageAdequate -MaxSpaceBytes $shadowMax -VolumeSizeBytes ([int64]$volCim.Capacity) -MinPct 5
     if (-not $shadowAdequate) {
         Write-SentinelLog -Message "Stockage de clichés VSS : absent ou inférieur à 5% du volume (les points de restauration s'évaporent). Le module 16 l'agrandit." -Level 'WARN'
@@ -376,7 +378,7 @@ catch { Write-SentinelLog -Message "bcdedit non exécutable." -Level 'INFO' }
 # verte affirmant qu'un disque jamais interrogé est en clair. Sonde muette = INFO.
 $blVerdict = [PSCustomObject]@{ Level = 'INFO'; Reason = 'état BitLocker non lisible' }
 try {
-    $blC = $bitlockerResults | Where-Object { ([string]$_.DriveLetter).TrimEnd(':') -eq 'C' } | Select-Object -First 1
+    $blC = $bitlockerResults | Where-Object { ([string]$_.DriveLetter).TrimEnd(':') -eq $sysLetter } | Select-Object -First 1
     if ($blC) {
         $blVerdict = Get-BitLockerResilienceVerdict `
             -ProtectionStatus $blC.ProtectionStatus `

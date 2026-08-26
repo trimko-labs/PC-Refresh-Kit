@@ -1,4 +1,4 @@
-# Passe UX terrain v2.3 - spec design
+﻿# Passe UX terrain v2.3 - spec design
 
 Date : 2026-08-22. Statut : validée (design présenté par sections, quatre choix actés,
 y compris le défaut « standard appliqué au démarrage »).

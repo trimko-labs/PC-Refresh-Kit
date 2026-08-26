@@ -1,4 +1,4 @@
-# Outils optionnels (enrichissement gracieux)
+﻿# Outils optionnels (enrichissement gracieux)
 
 Ce dossier peut contenir des binaires tiers SIGNÉS MICROSOFT (Sysinternals) qui
 enrichissent le diagnostic sans jamais être requis. Le coeur du kit reste 100 %

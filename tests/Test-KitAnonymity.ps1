@@ -23,6 +23,39 @@ param([switch]$CI, [switch]$History)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 
+# ---------------------------------------------------------------------------
+# Test-IsRegistryHive : $true si le fichier commence par l'entête « regf », donc
+# une ruche de registre Windows (SAM, SECURITY, SYSTEM, SOFTWARE, NTUSER.DAT...).
+# Détection par CONTENU, insensible au nom et à l'extension : une ruche client
+# glissée dans l'arbre pour analyse porte des hachages de mots de passe et
+# l'identité de la machine, elle ne doit JAMAIS partir en ligne. PURE/testable.
+# ---------------------------------------------------------------------------
+function Test-IsRegistryHive {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$LiteralPath)
+    # Fichier absent = cas legitime, pas une ruche. Present mais illisible (verrou,
+    # droits) = anomalie : l'exception se propage plutot que de se deguiser en
+    # $false, sinon une ruche verrouillee passerait pour propre (fail-open interdit).
+    if (-not (Test-Path -LiteralPath $LiteralPath)) { return $false }
+    $fs = [System.IO.File]::Open($LiteralPath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+    try {
+        $b   = New-Object byte[] 4
+        $off = 0
+        # Stream.Read peut rendre moins que demande hors fin de fichier (contrat du
+        # flux) : lire jusqu'a 4 octets ou vraie fin, pas un unique appel.
+        while ($off -lt 4) {
+            $read = $fs.Read($b, $off, 4 - $off)
+            if ($read -le 0) { break }
+            $off += $read
+        }
+    } finally { $fs.Dispose() }
+    return ($off -eq 4 -and $b[0] -eq 0x72 -and $b[1] -eq 0x65 -and $b[2] -eq 0x67 -and $b[3] -eq 0x66)
+}
+
+# Dot-source (tests unitaires) : s'arrêter ici, après avoir défini la fonction
+# pure, sans lancer le scan ni appeler exit (qui tuerait l'hôte Pester).
+if ($MyInvocation.InvocationName -eq '.') { return }
+
 # Motifs generiques : aucun nom propre n'est ecrit ici, ce fichier est public.
 $patterns = @(
     # Test et TestUser sont les profils fictifs utilises par les tests unitaires.
@@ -73,13 +106,36 @@ try { $tracked = @(git ls-files) } finally { Pop-Location }
 
 $binary = '\.(png|jpg|jpeg|gif|ico|zip|exe|dll|pdf|webp)$'
 $violations = @()
+$anomalies  = @()
 
 foreach ($rel in $tracked) {
+    $full = Join-Path $root $rel
+    # -LiteralPath partout : un nom a crochets (SAM[old], notes[1].md) est un motif
+    # wildcard pour Test-Path/Get-Content classiques, qui le sauteraient en silence.
+    if (-not (Test-Path -LiteralPath $full)) {
+        # git suit un fichier que le disque ne rend pas : anomalie, jamais un vert muet.
+        Write-Host "[ANONYMAT] AVERTISSEMENT : fichier suivi introuvable sur disque : $rel" -ForegroundColor Yellow
+        $anomalies += [PSCustomObject]@{ File = $rel; Line = 0; Rule = 'Fichier suivi introuvable'; Extract = '(absent du disque)' }
+        continue
+    }
+    # Ruche de registre binaire (SAM, SYSTEM, SOFTWARE...), quel que soit son nom ou
+    # son extension : hachages de mots de passe + identité machine, jamais dans un
+    # dépôt public. Contrôlée AVANT le saut des binaires, qui la manquerait.
+    # Fail-closed : Test-IsRegistryHive lève si le fichier EXISTE mais refuse la
+    # lecture (verrou) ; on compte alors une anomalie au lieu de le croire propre.
+    try {
+        if (Test-IsRegistryHive -LiteralPath $full) {
+            $violations += [PSCustomObject]@{ File = $rel; Line = 1; Rule = 'Ruche de registre suivie'; Extract = '(entête binaire regf)' }
+            continue
+        }
+    } catch {
+        Write-Host "[ANONYMAT] AVERTISSEMENT : fichier suivi illisible (verrou/droits) : $rel" -ForegroundColor Yellow
+        $anomalies += [PSCustomObject]@{ File = $rel; Line = 1; Rule = 'Fichier suivi illisible'; Extract = "($($_.Exception.Message))" }
+        continue
+    }
     if ($rel -match $binary) { continue }
     if ($rel -eq 'tests/Test-KitAnonymity.ps1') { continue }   # ce fichier porte les motifs
-    $full = Join-Path $root $rel
-    if (-not (Test-Path $full)) { continue }
-    $lines = Get-Content $full -Encoding UTF8 -ErrorAction SilentlyContinue
+    $lines = Get-Content -LiteralPath $full -Encoding UTF8 -ErrorAction SilentlyContinue
     for ($i = 0; $i -lt $lines.Count; $i++) {
         foreach ($p in $patterns) {
             if ($lines[$i] -match $p.Regex) {
@@ -174,11 +230,22 @@ if ($History) {
 
 # Verdict de l'arbre, toujours écrit : même quand l'historique échoue à côté, on
 # doit pouvoir lire ce que l'arbre a donné.
-if ($violations.Count -gt 0) {
-    Write-Host "[ANONYMAT] $($violations.Count) violation(s) :" -ForegroundColor Red
-    $violations | ForEach-Object { Write-Host ("  {0}:{1} - {2} : {3}" -f $_.File, $_.Line, $_.Rule, $_.Extract) }
+if ($violations.Count -gt 0 -or $anomalies.Count -gt 0) {
+    # Violation = donnée qui ne doit pas être publiée (ruche, chemin nominatif...).
+    # Anomalie = fichier suivi non contrôlable (introuvable, illisible) : pas une
+    # fuite avérée mais un contrôle qui n'a pas abouti, bloquant aussi (fail-closed).
+    # Les distinguer évite de crier « violation » sur un simple fichier effacé non
+    # indexé, ce qui apprendrait à ignorer le rouge de l'anonymat.
+    if ($violations.Count -gt 0) {
+        Write-Host "[ANONYMAT] $($violations.Count) violation(s) :" -ForegroundColor Red
+        $violations | ForEach-Object { Write-Host ("  {0}:{1} - {2} : {3}" -f $_.File, $_.Line, $_.Rule, $_.Extract) }
+    }
+    if ($anomalies.Count -gt 0) {
+        Write-Host "[ANONYMAT] $($anomalies.Count) anomalie(s) (fichier suivi non contrôlé) :" -ForegroundColor Red
+        $anomalies | ForEach-Object { Write-Host ("  {0}:{1} - {2} : {3}" -f $_.File, $_.Line, $_.Rule, $_.Extract) }
+    }
 } else {
-    Write-Host "[ANONYMAT] $($tracked.Count) fichier(s) suivis, $armed, 0 violation(s)" -ForegroundColor Green
+    Write-Host "[ANONYMAT] $($tracked.Count) fichier(s) suivis, $armed, 0 violation(s), 0 anomalie(s)" -ForegroundColor Green
 }
 
 if ($History) {
@@ -196,7 +263,7 @@ if ($History) {
     }
 }
 
-$total = $violations.Count + $historyViolations.Count
+$total = $violations.Count + $anomalies.Count + $historyViolations.Count
 if ($total -gt 0 -or $historyError) {
     # -History est un contrôle d'avant-publication : il doit pouvoir bloquer un
     # push, donc il rend un code de sortie même sans -CI.

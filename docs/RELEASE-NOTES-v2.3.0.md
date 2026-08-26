@@ -1,4 +1,4 @@
-# PC-Refresh-Kit v2.3.0 - passe UX terrain
+﻿# PC-Refresh-Kit v2.3.0 - passe UX terrain
 
 **Date :** 2026-08-22
 **Licence :** MIT
