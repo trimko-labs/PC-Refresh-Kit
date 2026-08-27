@@ -236,12 +236,12 @@ if ($volC) {
         # Le verdict combine pourcentage ET plancher en Go : le message dit lequel
         # a parlé, sinon un petit disque (eMMC 32 Go) passe pour saturé alors qu'il
         # est simplement sous le plancher absolu par construction.
-        Write-SentinelLog -Message "Espace libre C: sous les seuils de sécurité du registre : $($volC.FreeGB) Go libres sur $($volC.SizeGB) Go ($($volC.FreePct)% libre)." -Level $freeSpaceLevel
+        Write-SentinelLog -Message "Espace libre $env:SystemDrive sous les seuils de sécurité du registre : $($volC.FreeGB) Go libres sur $($volC.SizeGB) Go ($($volC.FreePct)% libre)." -Level $freeSpaceLevel
         Write-SentinelLog -Message "Seuils appliqués : avertissement sous $($kitCfg.diskWarnFreePct)% ou $($kitCfg.diskWarnFloorGB) Go libres, critique sous $($kitCfg.diskErrorFreePct)% ou $($kitCfg.diskErrorFloorGB) Go. Sur un volume de moins de $($kitCfg.diskWarnFloorGB) Go au total, le verdict est structurel et non une saturation. Sans marge, le registre peut ne plus écrire ses transactions." -Level 'INFO'
     }
 }
 else {
-    Write-SentinelLog -Message "Espace libre C: non mesurable : aucun volume C: dans la collecte." -Level 'INFO'
+    Write-SentinelLog -Message "Espace libre $env:SystemDrive non mesurable : aucun volume $env:SystemDrive dans la collecte." -Level 'INFO'
 }
 
 # Fraîcheur des ruches : SYSTEM qui ne s'écrit plus = pré-crash détectable.
@@ -387,17 +387,17 @@ try {
     if ($blVerdict.Level -eq 'ERROR') {
         # ERROR au call site (le verdict JSON et la pastille le restent) ; le journal
         # est plafonné à WARN par Write-SentinelLog, cf. commentaire en tête de bloc.
-        Write-SentinelLog -Message "BitLocker C: : $($blVerdict.Reason)" -Level 'ERROR'
+        Write-SentinelLog -Message "BitLocker $env:SystemDrive : $($blVerdict.Reason)" -Level 'ERROR'
     }
     elseif ($blVerdict.Level -eq 'INFO') {
-        Write-SentinelLog -Message "BitLocker C: : $($blVerdict.Reason)" -Level 'INFO'
+        Write-SentinelLog -Message "BitLocker $env:SystemDrive : $($blVerdict.Reason)" -Level 'INFO'
     }
 }
 catch {
     # Une collecte BitLocker biscornue ne doit jamais faire sortir le module avant
     # l'écriture du JSON : verdict neutre, la sentinelle continue.
     $blVerdict = [PSCustomObject]@{ Level = 'INFO'; Reason = 'état BitLocker non lisible' }
-    Write-SentinelLog -Message "Verdict BitLocker non calculable : aucune conclusion sur le chiffrement de C:." -Level 'INFO'
+    Write-SentinelLog -Message "Verdict BitLocker non calculable : aucune conclusion sur le chiffrement de $env:SystemDrive." -Level 'INFO'
 }
 
 # Contrat JSON : toutes les clés sont toujours présentes. RestoreEnabled,
