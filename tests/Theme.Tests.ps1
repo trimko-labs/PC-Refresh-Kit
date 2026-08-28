@@ -41,6 +41,24 @@ Describe 'Get-KitPalette' {
     }
 }
 
+Describe 'Get-KitBadgeLevelColors' {
+    It 'mappe chaque niveau sur des couleurs de la palette' {
+        $p = Get-KitPalette
+        foreach ($niveau in @('Ok', 'Accent', 'Warn', 'Err')) {
+            $c = Get-KitBadgeLevelColors -Level $niveau
+            $c.Back | Should -Be $p[$niveau] -Because $niveau
+            $c.Fore | Should -Be '#ffffff' -Because "$niveau : texte blanc sur couleur pleine"
+        }
+    }
+    It 'replie un niveau inconnu sur le badge neutre' {
+        $p = Get-KitPalette
+        $c = Get-KitBadgeLevelColors -Level 'Neutral'
+        $c.Back | Should -Be $p.Line
+        $c.Fore | Should -Be $p.InkSoft
+        (Get-KitBadgeLevelColors -Level 'zzz').Back | Should -Be $p.Line
+    }
+}
+
 Describe 'Get-KitLogLevelColorHex' {
     It 'mappe chaque niveau sur la couleur du rapport' {
         Get-KitLogLevelColorHex -Line '[2026-08-21 10:00:00] [OK] fait'      | Should -Be '#4ade80'
@@ -362,5 +380,116 @@ Describe 'New-KitModuleRow et Set-KitModuleRowState' {
             $r.DetailLabel.Bounds.Right | Should -BeLessOrEqual $r.Panel.Width
             $r.DetailLabel.Bounds.Right | Should -BeGreaterThan ($r.Panel.Width - 20)
         } finally { $r.Panel.Dispose() }
+    }
+}
+
+Describe 'Ancre d''aide de la timeline' {
+    It 'New-KitModuleRow expose un AnchorStripe invisible par défaut' {
+        $r = New-KitModuleRow -Index '5' -Name 'Test' -Mdl2Available $false
+        try {
+            $r.PSObject.Properties['AnchorStripe'] | Should -Not -BeNullOrEmpty
+            $r.AnchorStripe.Visible | Should -BeFalse
+            $r.AnchorStripe.Width | Should -Be 3
+            # Ordre de plan : le liseré doit rester au premier plan (index 0), sinon
+            # le GlyphLabel opaque le recouvre pendant les runs (revue Task 3 v2.5).
+            $r.Panel.Controls.GetChildIndex($r.AnchorStripe) | Should -Be 0
+        } finally { $r.Panel.Dispose() }
+    }
+    It 'Set-KitRowHelpAnchor pose et retire le liseré' {
+        $r = New-KitModuleRow -Index '5' -Name 'Test' -Mdl2Available $false
+        try {
+            Set-KitRowHelpAnchor -Row $r -On $true
+            $r.AnchorStripe.Visible | Should -BeTrue
+            $r.AnchorStripe.Tag | Should -BeTrue
+            Set-KitRowHelpAnchor -Row $r -On $false
+            $r.AnchorStripe.Visible | Should -BeFalse
+            $r.AnchorStripe.Tag | Should -BeFalse
+        } finally { $r.Panel.Dispose() }
+    }
+    It 'les états d''exécution ne touchent pas l''ancre' {
+        $r = New-KitModuleRow -Index '5' -Name 'Test' -Mdl2Available $false
+        try {
+            Set-KitRowHelpAnchor -Row $r -On $true
+            Set-KitModuleRowState -Row $r -State Running -Detail 'en cours' -Mdl2Available $false
+            $r.AnchorStripe.Visible | Should -BeTrue
+            Set-KitModuleRowState -Row $r -State Pending -Detail '' -Mdl2Available $false
+            $r.AnchorStripe.Visible | Should -BeTrue
+        } finally { $r.Panel.Dispose() }
+    }
+}
+
+Describe 'Get-KitBackupNetState et affichage' {
+    It 'decoche = off, quel que soit le disque' {
+        Get-KitBackupNetState -Module01Checked $false -BackupDataChecked $true -Candidates @() | Should -Be 'off'
+        $vol = [PSCustomObject]@{ DriveType = 'Removable' }
+        Get-KitBackupNetState -Module01Checked $true -BackupDataChecked $false -Candidates @($vol) | Should -Be 'off'
+    }
+    It 'aucun candidat = none' {
+        Get-KitBackupNetState -Module01Checked $true -BackupDataChecked $true -Candidates @() | Should -Be 'none'
+    }
+    It 'meilleur candidat amovible = external, fixe = internal' {
+        $rem = [PSCustomObject]@{ DriveType = 'Removable' }
+        $fix = [PSCustomObject]@{ DriveType = 'Fixed' }
+        Get-KitBackupNetState -Module01Checked $true -BackupDataChecked $true -Candidates @($rem, $fix) | Should -Be 'external'
+        Get-KitBackupNetState -Module01Checked $true -BackupDataChecked $true -Candidates @($fix) | Should -Be 'internal'
+    }
+    It 'affiche chaque etat avec le bon niveau' {
+        $d = Get-KitBackupNetDisplay -State 'external' -Letter 'E' -FreeGB 120.4
+        $d.Text | Should -Be 'Filet : disque E: (120 Go libres)'
+        $d.Level | Should -Be 'Ok'
+        $dInt = Get-KitBackupNetDisplay -State 'internal' -Letter 'D'
+        $dInt.Text | Should -Be 'Filet : partition interne D: - vérifier le support'
+        $dInt.Level | Should -Be 'Warn'
+        (Get-KitBackupNetDisplay -State 'none').Text | Should -Be 'Sans disque externe : fichiers perso non copiés'
+        (Get-KitBackupNetDisplay -State 'off').Text | Should -Be 'Aucune sauvegarde des données prévue : aucun filet'
+    }
+}
+
+Describe 'Get-DebloatPolicyHint' {
+    It 'donne une consequence courte par politique' {
+        Get-DebloatPolicyHint -PolicyFr 'Conservateur' | Should -Be 'Aucune app douteuse supprimée'
+        Get-DebloatPolicyHint -PolicyFr 'Standard'     | Should -Be 'Non utilisée depuis 90 j = retirée sans question'
+        Get-DebloatPolicyHint -PolicyFr 'Agressif'     | Should -Be 'Les apps douteuses sont retirées, même utilisées'
+    }
+    It 'rend une chaine vide pour une politique inconnue' {
+        Get-DebloatPolicyHint -PolicyFr 'zzz' | Should -Be ''
+        Get-DebloatPolicyHint -PolicyFr ''    | Should -Be ''
+    }
+}
+
+Describe 'Get-KitPreRunWarnings' {
+    It 'ne dit rien en simulation, meme avec tout a signaler' {
+        @(Get-KitPreRunWarnings -BackupState 'none' -Module03Checked $true -Policy 'Aggressive' -IsDryRun $true).Count | Should -Be 0
+    }
+    It 'ne dit rien quand filet externe et debloatage conservateur' {
+        @(Get-KitPreRunWarnings -BackupState 'external' -Module03Checked $true -Policy 'Conservative' -IsDryRun $false).Count | Should -Be 0
+    }
+    It 'signale chaque etat de filet degrade avec le bon texte' {
+        # Épinglage par contenu (revue T6) : une inversion des messages entre
+        # états passerait un simple comptage au vert.
+        $cas = @(
+            @{ etat = 'none';     motif = 'Aucun disque externe' }
+            @{ etat = 'internal'; motif = 'partition interne' }
+            @{ etat = 'off';      motif = 'décochée' }
+        )
+        foreach ($c in $cas) {
+            $w = @(Get-KitPreRunWarnings -BackupState $c.etat -Module03Checked $false -Policy 'Standard' -IsDryRun $false)
+            $w.Count | Should -Be 1 -Because $c.etat
+            $w[0] | Should -Match $c.motif -Because $c.etat
+        }
+    }
+    It 'signale la suppression silencieuse en Standard et l agressif, pas sans module 03' {
+        $w = @(Get-KitPreRunWarnings -BackupState 'external' -Module03Checked $true -Policy 'Standard' -IsDryRun $false)
+        $w.Count | Should -Be 1
+        $w[0] | Should -Match '90 j'
+        $w = @(Get-KitPreRunWarnings -BackupState 'external' -Module03Checked $true -Policy 'Aggressive' -IsDryRun $false)
+        $w[0] | Should -Match 'même utilisées'
+        @(Get-KitPreRunWarnings -BackupState 'external' -Module03Checked $false -Policy 'Aggressive' -IsDryRun $false).Count | Should -Be 0
+    }
+    It 'cumule filet et debloatage, dans cet ordre' {
+        $w = @(Get-KitPreRunWarnings -BackupState 'none' -Module03Checked $true -Policy 'Standard' -IsDryRun $false)
+        $w.Count | Should -Be 2
+        $w[0] | Should -Match 'Aucun disque externe'
+        $w[1] | Should -Match '90 j'
     }
 }

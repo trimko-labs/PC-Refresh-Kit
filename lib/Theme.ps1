@@ -45,6 +45,24 @@ function Get-KitPalette {
 }
 
 # ---------------------------------------------------------------------------
+# Get-KitBadgeLevelColors : couleurs d'un badge d'aide selon son niveau. Blanc
+# sur couleur pleine pour les niveaux signifiants, neutre discret pour le reste
+# (durée). PURE. Les niveaux sont ceux de Get-HelpBadges (lib\Help.ps1).
+# ---------------------------------------------------------------------------
+function Get-KitBadgeLevelColors {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Level)
+    $p = Get-KitPalette
+    switch ($Level) {
+        'Ok'     { return @{ Back = $p.Ok;     Fore = '#ffffff' } }
+        'Accent' { return @{ Back = $p.Accent; Fore = '#ffffff' } }
+        'Warn'   { return @{ Back = $p.Warn;   Fore = '#ffffff' } }
+        'Err'    { return @{ Back = $p.Err;    Fore = '#ffffff' } }
+        default  { return @{ Back = $p.Line;   Fore = $p.InkSoft } }
+    }
+}
+
+# ---------------------------------------------------------------------------
 # Get-KitLogLevelColorHex : couleur hex d'une ligne de journal sur fond sombre.
 # Get-LogLevelColor (Log.ps1) reste la référence du mode console sur fond
 # clair : les deux coexistent, chacune pour son rendu. PURE.
@@ -155,6 +173,89 @@ function Get-RunDoneText {
     $sErr  = if ($CountError -gt 1) { 's' } else { '' }
     $dur   = if ([string]::IsNullOrWhiteSpace($Elapsed)) { '-' } else { $Elapsed }
     return "Terminé : $CountOK OK - $CountWarn avertissement$sWarn - $CountError erreur$sErr - durée $dur"
+}
+
+# ---------------------------------------------------------------------------
+# Get-KitBackupNetState : état du filet de sauvegarde des données.
+#   'off'      : étape Sauvegarde ou option données décochée - rien ne tournera
+#   'none'     : aucun volume candidat détecté
+#   'internal' : meilleur candidat = partition fixe (pas un support amovible)
+#   'external' : disque amovible présent
+# ---------------------------------------------------------------------------
+function Get-KitBackupNetState {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][bool]$Module01Checked,
+        [Parameter(Mandatory)][bool]$BackupDataChecked,
+        [AllowEmptyCollection()][object[]]$Candidates = @()
+    )
+    if (-not $Module01Checked -or -not $BackupDataChecked) { return 'off' }
+    if ($Candidates.Count -eq 0) { return 'none' }
+    if ($Candidates[0].DriveType -eq 'Removable') { return 'external' }
+    return 'internal'
+}
+
+# Texte et niveau de l'indicateur de filet, par état.
+function Get-KitBackupNetDisplay {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][ValidateSet('off', 'none', 'internal', 'external')][string]$State,
+        [AllowEmptyString()][string]$Letter = '',
+        [double]$FreeGB = 0
+    )
+    switch ($State) {
+        'external' { return @{ Text = "Filet : disque $Letter`: ($([math]::Round($FreeGB, 0)) Go libres)"; Level = 'Ok' } }
+        'internal' { return @{ Text = "Filet : partition interne $Letter`: - vérifier le support"; Level = 'Warn' } }
+        'none'     { return @{ Text = 'Sans disque externe : fichiers perso non copiés'; Level = 'Warn' } }
+        # Formulation neutre sur la cause : l'état 'off' vient aussi bien de la
+        # case Sauvegarde des données que de l'étape 01 décochée, auquel cas
+        # l'option reste visiblement cochée dans le panneau.
+        'off'      { return @{ Text = 'Aucune sauvegarde des données prévue : aucun filet'; Level = 'Warn' } }
+    }
+}
+
+# Conséquence courte de la politique de débloatage, affichée sous la liste.
+# Textes courts : la carte Réglages fait 301 px utiles à la taille mini.
+function Get-DebloatPolicyHint {
+    [CmdletBinding()]
+    param([AllowEmptyString()][string]$PolicyFr = '')
+    switch ($PolicyFr) {
+        'Conservateur' { return 'Aucune app douteuse supprimée' }
+        'Standard'     { return 'Non utilisée depuis 90 j = retirée sans question' }
+        'Agressif'     { return 'Les apps douteuses sont retirées, même utilisées' }
+        default        { return '' }
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Get-KitPreRunWarnings : lignes de la confirmation avant lancement RÉEL.
+# Liste vide = aucune confirmation (rien à signaler = aucune friction).
+# En simulation, jamais de confirmation. PURE.
+# ---------------------------------------------------------------------------
+function Get-KitPreRunWarnings {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][ValidateSet('off', 'none', 'internal', 'external')][string]$BackupState,
+        [Parameter(Mandatory)][bool]$Module03Checked,
+        [AllowEmptyString()][string]$Policy = 'Standard',
+        [Parameter(Mandatory)][bool]$IsDryRun
+    )
+    if ($IsDryRun) { return @() }
+    $w = @()
+    switch ($BackupState) {
+        'none'     { $w += 'Aucun disque externe branché : les fichiers personnels ne seront pas copiés (le point de restauration ne les couvre pas).' }
+        'internal' { $w += 'La sauvegarde partirait sur une partition interne : brancher un vrai disque externe est plus sûr.' }
+        'off'      { $w += 'Aucune sauvegarde des données ne tournera (étape Sauvegarde ou option Données décochée) : aucun filet pour les fichiers personnels.' }
+    }
+    if ($Module03Checked) {
+        if ($Policy -eq 'Standard') {
+            $w += 'Débloatage standard : les apps douteuses non utilisées depuis 90 j seront supprimées sans question (réinstallables via le Store).'
+        }
+        elseif ($Policy -eq 'Aggressive') {
+            $w += 'Débloatage agressif : les apps douteuses seront supprimées même utilisées (sauf Game Pass).'
+        }
+    }
+    return $w
 }
 
 # ---------------------------------------------------------------------------
@@ -477,12 +578,26 @@ function New-KitModuleRow {
         $detail.Location = New-Object System.Drawing.Point(($sender.Width - $detail.Width - 4), 6)
     }.GetNewClosure())
 
-    $panel.Controls.AddRange(@($cbx, $glyph, $idLbl, $nameLbl, $detail))
+    # Liseré d'ancrage (v2.5) : visible quand l'aide affichée est celle de
+    # cette ligne, jamais touché par les états d'exécution. Au PREMIER plan et
+    # non en arrière : le GlyphLabel, opaque et posé en X=0, le réduirait sinon
+    # à deux moignons de 3 px dès qu'un état s'affiche. Devant, il ne mord que
+    # sur 3 colonnes de la marge inerte du glyphe et 1 px de bordure de la case.
+    $stripe = New-Object System.Windows.Forms.Panel
+    $stripe.Width = 3
+    $stripe.Height = $panel.Height
+    $stripe.Location = New-Object System.Drawing.Point(0, 0)
+    $stripe.BackColor = ConvertTo-KitColor $p.Accent
+    $stripe.Visible = $false
+
+    $panel.Controls.AddRange(@($cbx, $glyph, $idLbl, $nameLbl, $detail, $stripe))
+    $stripe.BringToFront()
     # Index (et non Id) : la colonne montre le numéro d'étape 1..15, plus jamais
     # l'identifiant technique du fichier module.
     return [PSCustomObject]@{
         Panel = $panel; CheckBox = $cbx; GlyphLabel = $glyph; IdLabel = $idLbl
         NameLabel = $nameLbl; DetailLabel = $detail; Index = $Index
+        AnchorStripe = $stripe
     }
 }
 
@@ -518,6 +633,21 @@ function Set-KitModuleRowState {
     $bold = if ($State -eq 'Running') { [System.Drawing.FontStyle]::Bold } else { [System.Drawing.FontStyle]::Regular }
     $Row.NameLabel.Font = New-Object System.Drawing.Font('Segoe UI', 9.75, $bold)
     $Row.NameLabel.ForeColor = if ($State -eq 'Skipped') { ConvertTo-KitColor $p.Skip } else { ConvertTo-KitColor $p.Ink }
+}
+
+# Set-KitRowHelpAnchor : montre ou cache le liseré d'ancrage d'une ligne.
+# Orthogonal aux états d'exécution : aucun Set-KitModuleRowState n'y touche.
+function Set-KitRowHelpAnchor {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][object]$Row,
+        [Parameter(Mandatory)][bool]$On
+    )
+    $Row.AnchorStripe.Visible = $On
+    # Le Tag double Visible en témoin logique : sur une fenêtre jamais affichée,
+    # Visible retourne toujours faux, et le SelfTest y perdrait l'unicité de
+    # l'ancre. Le Tag, lui, se relit sans fenêtre.
+    $Row.AnchorStripe.Tag = $On
 }
 
 function Show-KitInputDialog {

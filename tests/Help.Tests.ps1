@@ -199,3 +199,117 @@ Describe 'Couverture du catalogue' {
         $octets[0] | Should -Not -Be 0xEF -Because 'config\help.fr.json doit rester en UTF-8 sans BOM'
     }
 }
+
+Describe 'Get-HelpHeaderInfo' {
+    It 'classe une cle module' {
+        $i = Get-HelpHeaderInfo -Key 'module.03'
+        $i.Kind | Should -Be 'module'
+        $i.KindText | Should -Be 'ÉTAPE'
+        $i.Breadcrumb | Should -Be 'Intervention > Étapes'
+    }
+    It 'classe profil, debloatage, comptes, options, actions, etat' {
+        (Get-HelpHeaderInfo -Key 'profile.gamer').KindText   | Should -Be 'PROFIL'
+        (Get-HelpHeaderInfo -Key 'debloat.standard').Breadcrumb | Should -Be 'Réglages > Débloatage'
+        (Get-HelpHeaderInfo -Key 'account.standard').Breadcrumb | Should -Be 'Réglages > Comptes'
+        (Get-HelpHeaderInfo -Key 'option.recycle').KindText  | Should -Be 'RÉGLAGE'
+        (Get-HelpHeaderInfo -Key 'action.run').KindText      | Should -Be 'ACTION'
+        (Get-HelpHeaderInfo -Key 'status.backupnet').KindText | Should -Be 'ÉTAT'
+    }
+    It 'replie toute cle inconnue sur AIDE / General' {
+        $i = Get-HelpHeaderInfo -Key 'welcome'
+        $i.Kind | Should -Be 'general'
+        $i.KindText | Should -Be 'AIDE'
+        $i.Breadcrumb | Should -Be 'Général'
+    }
+}
+
+Describe 'Get-HelpBadges' {
+    It 'rend les trois badges dans l ordre reversible, data, duration' {
+        $e = [PSCustomObject]@{ title = 't'; badges = [PSCustomObject]@{ reversible = 'store'; data = 'untouched'; duration = '5-15 min' } }
+        $b = @(Get-HelpBadges -Entry $e)
+        $b.Count | Should -Be 3
+        $b[0].Text | Should -Be 'RÉVERSIBLE VIA STORE'
+        $b[0].Level | Should -Be 'Accent'
+        $b[1].Text | Should -Be 'DONNÉES PERSO : INTACTES'
+        $b[1].Level | Should -Be 'Ok'
+        $b[2].Text | Should -Be 'DURÉE : 5-15 min'
+        $b[2].Level | Should -Be 'Neutral'
+    }
+    It 'mappe chaque niveau de reversibilite' {
+        foreach ($case in @(
+            @{ v = 'yes';      t = 'RÉVERSIBLE';               l = 'Ok' }
+            @{ v = 'partial';  t = 'PARTIELLEMENT RÉVERSIBLE'; l = 'Warn' }
+            @{ v = 'no';       t = 'IRRÉVERSIBLE';             l = 'Err' }
+            @{ v = 'readonly'; t = 'LECTURE SEULE';            l = 'Ok' }
+        )) {
+            $e = [PSCustomObject]@{ badges = [PSCustomObject]@{ reversible = $case.v } }
+            $b = @(Get-HelpBadges -Entry $e)
+            $b[0].Text | Should -Be $case.t
+            $b[0].Level | Should -Be $case.l
+        }
+    }
+    It 'mappe copyonly et optin' {
+        $e = [PSCustomObject]@{ badges = [PSCustomObject]@{ data = 'copyonly' } }
+        (@(Get-HelpBadges -Entry $e))[0].Text | Should -Be 'DONNÉES PERSO : COPIE SEULE'
+        $e = [PSCustomObject]@{ badges = [PSCustomObject]@{ data = 'optin' } }
+        (@(Get-HelpBadges -Entry $e))[0].Level | Should -Be 'Warn'
+    }
+    It 'ignore une valeur inconnue et un champ vide sans erreur' {
+        $e = [PSCustomObject]@{ badges = [PSCustomObject]@{ reversible = 'nimporte'; duration = '   ' } }
+        @(Get-HelpBadges -Entry $e).Count | Should -Be 0
+    }
+    It 'rend une liste vide sans champ badges' {
+        $e = [PSCustomObject]@{ title = 'sans badges' }
+        @(Get-HelpBadges -Entry $e).Count | Should -Be 0
+    }
+    It 'rend une liste vide si badges est null' {
+        $e = [PSCustomObject]@{ badges = $null }
+        @(Get-HelpBadges -Entry $e).Count | Should -Be 0
+    }
+}
+
+Describe 'Catalogue reel : badges valides' {
+    BeforeAll {
+        $script:cheminCatalogue = Join-Path $PSScriptRoot '..\config\help.fr.json'
+        $script:catalogue = Get-HelpCatalog -Path $script:cheminCatalogue
+    }
+    It 'les badges couvrent exactement les 28 rubriques décidées' {
+        # Égalité d'ensemble : fige le plancher (28), attrape une disparition en
+        # masse et interdit un badge hors liste (revue Task 4 v2.5). La valeur
+        # est exigée non nulle : un "badges": null ne compte pas comme porteur.
+        $attendues = @(
+            'module.00', 'module.01', 'module.16', 'module.02', 'module.03', 'module.04',
+            'module.05', 'module.06', 'module.07', 'module.08', 'module.09', 'module.10',
+            'module.11', 'module.12', 'module.13', 'module.14', 'module.15',
+            'option.backupdata', 'option.scandefender', 'option.recycle', 'option.winold',
+            'option.cache', 'option.onedrive', 'option.oem', 'option.netreset',
+            'option.bitlockerkey', 'option.dryrun', 'action.delfiche'
+        )
+        $porteuses = @($script:catalogue.Keys | Where-Object {
+            $e = $script:catalogue[$_]
+            $e.PSObject.Properties['badges'] -and $null -ne $e.badges
+        } | Sort-Object)
+        $porteuses | Should -Be @($attendues | Sort-Object)
+    }
+    It 'toutes les valeurs badges du catalogue sont des enums connus' {
+        $revOk  = @('yes', 'store', 'partial', 'no', 'readonly')
+        $dataOk = @('untouched', 'copyonly', 'optin')
+        foreach ($key in $script:catalogue.Keys) {
+            $e = $script:catalogue[$key]
+            if (-not $e.PSObject.Properties['badges'] -or $null -eq $e.badges) { continue }
+            $b = $e.badges
+            if ($b.PSObject.Properties['reversible']) { [string]$b.reversible | Should -BeIn $revOk -Because "$key" }
+            if ($b.PSObject.Properties['data'])       { [string]$b.data       | Should -BeIn $dataOk -Because "$key" }
+        }
+    }
+    It 'chaque rubrique module porte des badges' {
+        foreach ($id in @('00','01','16','02','03','04','05','06','07','08','09','11','12','13','15','10','14')) {
+            $e = $script:catalogue["module.$id"]
+            $e.PSObject.Properties['badges'] | Should -Not -BeNullOrEmpty -Because "module.$id"
+        }
+    }
+    It 'le fichier catalogue n a pas de BOM' {
+        $octets = [System.IO.File]::ReadAllBytes($script:cheminCatalogue)
+        ($octets[0] -eq 0xEF -and $octets[1] -eq 0xBB) | Should -BeFalse
+    }
+}

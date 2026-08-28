@@ -1134,6 +1134,45 @@ Describe 'Get-BackupSourceFolders' {
 }
 
 # ---------------------------------------------------------------------------
+Describe 'Select-KitBackupCandidates' {
+    BeforeAll {
+        function New-FauxVolume([string]$Letter, [string]$Type, [long]$Free = 10GB) {
+            [PSCustomObject]@{ DriveLetter = [char]$Letter; DriveType = $Type; SizeRemaining = $Free }
+        }
+    }
+    It 'exclut le volume systeme et les partitions portant un Windows' {
+        $vols = @(
+            (New-FauxVolume 'C' 'Fixed'), (New-FauxVolume 'D' 'Fixed'), (New-FauxVolume 'E' 'Removable')
+        )
+        $r = @(Select-KitBackupCandidates -Volumes $vols -SystemDriveLetter 'C' -SystemPathLetters @('C', 'D'))
+        @($r | ForEach-Object { "$($_.DriveLetter)" }) | Should -Be @('E')
+    }
+    It 'trie les amovibles avant les partitions fixes' {
+        $vols = @((New-FauxVolume 'D' 'Fixed'), (New-FauxVolume 'F' 'Removable'))
+        $r = @(Select-KitBackupCandidates -Volumes $vols -SystemDriveLetter 'C' -SystemPathLetters @('C'))
+        @($r | ForEach-Object { "$($_.DriveLetter)" }) | Should -Be @('F', 'D')
+    }
+    It 'departage deux amovibles par la lettre' {
+        # Deux cles branchees : l'ordre de Get-Volume ne doit pas decider a la
+        # place du tri secondaire, sinon l'indicateur change de lettre d'un
+        # rafraichissement a l'autre sans que rien n'ait bouge.
+        $vols = @((New-FauxVolume 'F' 'Removable'), (New-FauxVolume 'D' 'Removable'))
+        $r = @(Select-KitBackupCandidates -Volumes $vols -SystemDriveLetter 'C' -SystemPathLetters @('C'))
+        @($r | ForEach-Object { "$($_.DriveLetter)" }) | Should -Be @('D', 'F')
+    }
+    It 'ignore les volumes sans lettre et les types non geres' {
+        $vols = @(
+            [PSCustomObject]@{ DriveLetter = $null; DriveType = 'Fixed'; SizeRemaining = 1GB },
+            [PSCustomObject]@{ DriveLetter = [char]'G'; DriveType = 'CD-ROM'; SizeRemaining = 1GB }
+        )
+        @(Select-KitBackupCandidates -Volumes $vols -SystemDriveLetter 'C').Count | Should -Be 0
+    }
+    It 'rend une liste vide sans candidat' {
+        @(Select-KitBackupCandidates -Volumes @() -SystemDriveLetter 'C').Count | Should -Be 0
+    }
+}
+
+# ---------------------------------------------------------------------------
 Describe 'Get-BatteryCapacityFromHtml' {
     It 'extrait design et full depuis un rapport anglais' {
         $html = '<tr><td>DESIGN CAPACITY</td><td>76,000 mWh</td></tr><tr><td>FULL CHARGE CAPACITY</td><td>60,542 mWh</td></tr>'
@@ -1688,9 +1727,44 @@ Describe 'Test-InKeepList' {
 }
 
 # ---------------------------------------------------------------------------
+Describe 'Contrat (a) : appels des fonctions à virgule unaire' {
+    It 'aucune enveloppe directe @(fonction) sur une fonction qui retourne ,@(...)' {
+        # Ces fonctions retournent leur tableau derrière une virgule unaire :
+        # l'enveloppe directe @(f) imbrique le tableau et .Count vaut 1 même à
+        # vide. Bugs réels corrigés en v2.5 : redémarrage fantôme du rapport
+        # (10-Report) et avertissement antivirus fantôme (03-Debloat). Le
+        # contrat maison (modules/02-Antivirus.ps1) : ASSIGNER puis @($var).
+        $fonctions = @(
+            'Get-ActiveThirdPartyAv', 'Get-DiagThirdPartyAv',
+            'Get-RemovedAppsFromLog', 'Get-UndoPlan',
+            'ConvertTo-KitManifestLines', 'Get-RebootMarkersFromLogs',
+            'Get-StartupApprovedDisabledBytes', 'Get-StartupApprovedEnabledBytes',
+            'Find-FenetreParTitre'
+        )
+        $motif  = '@\((' + ($fonctions -join '|') + ')\b'
+        $racine = Split-Path $PSScriptRoot -Parent
+        $fichiers = @(
+            Get-ChildItem -Path (Join-Path $racine 'modules') -Filter '*.ps1' -File
+            Get-ChildItem -Path (Join-Path $racine 'lib') -Filter '*.ps1' -File
+            Get-ChildItem -Path (Join-Path $racine 'tools') -Filter '*.ps1' -File
+            Get-ChildItem -Path $racine -Filter '*.ps1' -File
+        )
+        foreach ($f in $fichiers) {
+            $lignes = @(Get-Content $f.FullName -Encoding UTF8)
+            for ($i = 0; $i -lt $lignes.Count; $i++) {
+                # Les commentaires qui documentent le piège restent autorisés :
+                # seule la partie code de la ligne est examinée.
+                $code = ($lignes[$i] -split '#', 2)[0]
+                $code | Should -Not -Match $motif -Because "$($f.Name):$($i + 1)"
+            }
+        }
+    }
+}
+
+# ---------------------------------------------------------------------------
 Describe 'Get-KitVersion' {
     It 'retourne la version courante du kit' {
-        Get-KitVersion | Should -Be 'v2.4.1'
+        Get-KitVersion | Should -Be 'v2.5.0'
     }
     It 'concorde avec la version par defaut de Build-ReleaseZip' {
         $buildScript = Get-Content (Join-Path $PSScriptRoot '..\tools\Build-ReleaseZip.ps1') -Raw

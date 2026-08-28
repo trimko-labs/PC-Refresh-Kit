@@ -18,7 +18,11 @@ Assert-Admin
 
 Write-KitLog -Message "=== 03-Debloat : début ===" -Level 'INFO'
 
-$activeAv = @(Get-ActiveThirdPartyAv)   # @() : .Count sûr sous StrictMode 5.1 même si aucun AV tiers
+# Contrat (a) de Get-ActiveThirdPartyAv (retour ,@(...), cf modules/02-Antivirus.ps1) :
+# ASSIGNER puis envelopper. En enveloppe directe, .Count valait 1 même sans AV
+# tiers : l'avertissement partait sur toutes les machines, avec une liste vide.
+$avActifs = Get-ActiveThirdPartyAv
+$activeAv = @($avActifs)
 if ($activeAv.Count -gt 0) {
     Write-KitLog -Message "ATTENTION : antivirus tiers actif ($($activeAv -join ', '))." -Level 'WARN'
     Write-KitLog -Message "Il peut bloquer silencieusement les suppressions AppX. Le désinstaller (module 02) ou le désactiver d'abord pour un résultat fiable." -Level 'WARN'

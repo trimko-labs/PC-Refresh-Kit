@@ -98,6 +98,13 @@ $script:ApplyingProfile    = $false            # vrai pendant Set-GuiFromProfile
 $script:CustomProfileLabel = '(personnalisé)'  # entrée sentinelle de la liste des profils, toujours en dernier
 $script:HelpPinned        = $false   # épingle : plus aucun remplacement du panneau
 $script:PendingHelpAction = $null    # action différée par le délai anti-transit
+$script:HelpAnchorId      = ''       # module dont la ligne de timeline porte le liseré d'ancrage
+$script:BackupNetState       = 'none'              # filet de sauvegarde : off | none | internal | external
+$script:BackupNetLastRefresh = [DateTime]::MinValue # dernière détection de disque (garde anti-rafale)
+# Table FR -> EN de la politique de débloatage, partagée par Build-Queue et la
+# confirmation avant lancement : une seule source, une faute de frappe ne peut
+# plus faire taire silencieusement un avertissement de sûreté.
+$script:DebloatPolicyMap = @{ 'Conservateur' = 'Conservative'; 'Standard' = 'Standard'; 'Agressif' = 'Aggressive' }
 # Nom de machine AFFICHÉ (bandeau et titre de la fenêtre). En aperçu, la machine
 # réelle n'a rien à faire dans les captures de documentation : la spec 5.5 fixe
 # PC-DEMO. Les CHEMINS (fiche, log, rapport) gardent $env:COMPUTERNAME : eux ne
@@ -273,6 +280,18 @@ $cmbDebloat.Size = New-Object System.Drawing.Size(165, 24)
 $cmbDebloat.Location = New-Object System.Drawing.Point(115, 26)
 $cardSettings.Controls.Add($cmbDebloat)
 
+# Conséquence de la politique choisie, toujours visible (v2.5) : le mot
+# « Agressif » ne porte plus seul. Mise à jour au changement de sélection.
+# Le plus long des trois textes mesure 256 px et finit à x=268 : il tient dans
+# les 301 px utiles de la carte à la taille mini, sans ellipse ni retour ligne.
+$lblDebloatHint = New-Object System.Windows.Forms.Label
+$lblDebloatHint.AutoSize = $true
+$lblDebloatHint.Font = New-Object System.Drawing.Font('Segoe UI', 8.25)
+$lblDebloatHint.ForeColor = ConvertTo-KitColor $script:Palette.InkMuted
+$lblDebloatHint.Location = New-Object System.Drawing.Point(12, 52)
+$lblDebloatHint.Text = Get-DebloatPolicyHint -PolicyFr 'Standard'
+$cardSettings.Controls.Add($lblDebloatHint)
+
 # Compte utilisateur : les deux radios partagent le parent carte, leur
 # exclusivité mutuelle survit donc à la disparition du GroupBox.
 $rbStd = New-Object System.Windows.Forms.RadioButton
@@ -281,7 +300,7 @@ $rbStd.AutoSize = $true
 $rbStd.Checked = $true
 $rbStd.Font = New-Object System.Drawing.Font('Segoe UI', 9.75)
 $rbStd.ForeColor = ConvertTo-KitColor $script:Palette.Ink
-$rbStd.Location = New-Object System.Drawing.Point(12, 58)
+$rbStd.Location = New-Object System.Drawing.Point(12, 74)
 $cardSettings.Controls.Add($rbStd)
 
 $rbKeep = New-Object System.Windows.Forms.RadioButton
@@ -289,7 +308,7 @@ $rbKeep.Text = "Garder admin (UAC seul)"
 $rbKeep.AutoSize = $true
 $rbKeep.Font = New-Object System.Drawing.Font('Segoe UI', 9.75)
 $rbKeep.ForeColor = ConvertTo-KitColor $script:Palette.Ink
-$rbKeep.Location = New-Object System.Drawing.Point(12, 80)
+$rbKeep.Location = New-Object System.Drawing.Point(12, 94)
 $cardSettings.Controls.Add($rbKeep)
 
 # Données utilisateur (action positive, cochée par défaut : non destructrice,
@@ -300,7 +319,7 @@ $cbBackupData.AutoSize = $true
 $cbBackupData.Checked = $true
 $cbBackupData.Font = New-Object System.Drawing.Font('Segoe UI', 9.75)
 $cbBackupData.ForeColor = ConvertTo-KitColor $script:Palette.Ink
-$cbBackupData.Location = New-Object System.Drawing.Point(12, 106)
+$cbBackupData.Location = New-Object System.Drawing.Point(12, 116)
 $cardSettings.Controls.Add($cbBackupData)
 
 # Option Defender (cochée par défaut - option positive liée au module 02)
@@ -310,7 +329,7 @@ $cbScanDefender.AutoSize = $true
 $cbScanDefender.Checked  = $true
 $cbScanDefender.Font = New-Object System.Drawing.Font('Segoe UI', 9.75)
 $cbScanDefender.ForeColor = ConvertTo-KitColor $script:Palette.Ink
-$cbScanDefender.Location = New-Object System.Drawing.Point(12, 128)
+$cbScanDefender.Location = New-Object System.Drawing.Point(12, 136)
 $cardSettings.Controls.Add($cbScanDefender)
 
 # Mode d'exécution : cochée = simulation, décochée = intervention réelle. Le
@@ -323,7 +342,7 @@ $cbDryRun.Text = "Simulation : montrer sans rien modifier"
 $cbDryRun.AutoSize = $true
 $cbDryRun.Font = New-Object System.Drawing.Font('Segoe UI', 9.75)
 $cbDryRun.ForeColor = ConvertTo-KitColor $script:Palette.Ink
-$cbDryRun.Location = New-Object System.Drawing.Point(12, 150)
+$cbDryRun.Location = New-Object System.Drawing.Point(12, 156)
 if ($WhatIf) { $cbDryRun.Checked = $true }
 $cardSettings.Controls.Add($cbDryRun)
 
@@ -437,6 +456,54 @@ $script:BtnHelpPin.ForeColor = ConvertTo-KitColor $script:Palette.InkMuted
 $script:BtnHelpPin.BackColor = ConvertTo-KitColor $script:Palette.Card
 $script:HelpPinBar.Controls.Add($script:BtnHelpPin)
 $script:TabHelp.Controls.Add($script:HelpPinBar)
+
+# En-tête contextuel (v2.5) : type de l'élément, fil d'Ariane, badges. Il se place
+# SOUS la barre d'épinglage, qui garde sa position historique en haut du panneau.
+# Le BringToFront ci-dessous n'est pas cosmétique : entre deux contrôles Dock=Top,
+# WinForms colle à l'arête celui qui est le plus en ARRIÈRE du plan (index le plus
+# haut). Ajouté en dernier, l'en-tête serait donc au-dessus de l'épingle et la
+# repousserait vers le bas ; le ramener au premier plan le fait docker à
+# l'intérieur, donc sous elle. Le BringToFront du RichTextBox qui suit le rend à
+# son tour le plus intérieur et lui laisse le reste de la surface.
+$script:HelpHeaderPanel = New-Object System.Windows.Forms.Panel
+$script:HelpHeaderPanel.Dock = 'Top'
+# 52 px : la pastille de type finit à y=26 (4 + 22 de label), la ligne de badges
+# démarre à 28 pour lui laisser 2 px d'air, et finit à 50 avec 2 px de marge basse.
+# Mesure T4 : à 46 px les deux lignes se chevauchaient de 2 px.
+$script:HelpHeaderPanel.Height = 52
+$script:HelpHeaderPanel.BackColor = ConvertTo-KitColor $script:Palette.Card
+
+$script:HelpKindLabel = New-Object System.Windows.Forms.Label
+$script:HelpKindLabel.AutoSize = $true
+$script:HelpKindLabel.Font = New-Object System.Drawing.Font('Segoe UI', 7.5, [System.Drawing.FontStyle]::Bold)
+$script:HelpKindLabel.ForeColor = [System.Drawing.Color]::White
+$script:HelpKindLabel.BackColor = ConvertTo-KitColor $script:Palette.AccentDark
+$script:HelpKindLabel.Padding = New-Object System.Windows.Forms.Padding(4, 2, 4, 2)
+$script:HelpKindLabel.Location = New-Object System.Drawing.Point(8, 4)
+$script:HelpHeaderPanel.Controls.Add($script:HelpKindLabel)
+
+$script:HelpBreadcrumbLabel = New-Object System.Windows.Forms.Label
+$script:HelpBreadcrumbLabel.AutoSize = $true
+$script:HelpBreadcrumbLabel.Font = New-Object System.Drawing.Font('Segoe UI', 8.25)
+$script:HelpBreadcrumbLabel.ForeColor = ConvertTo-KitColor $script:Palette.InkMuted
+$script:HelpBreadcrumbLabel.Location = New-Object System.Drawing.Point(64, 6)   # recalé à chaque rendu
+$script:HelpHeaderPanel.Controls.Add($script:HelpBreadcrumbLabel)
+
+# Trois labels de badge recyclés à chaque rendu : jamais de création de
+# contrôle au survol.
+$script:HelpBadgeLabels = @()
+for ($i = 0; $i -lt 3; $i++) {
+    $bl = New-Object System.Windows.Forms.Label
+    $bl.AutoSize = $true
+    $bl.Visible = $false
+    $bl.Font = New-Object System.Drawing.Font('Segoe UI', 7.5, [System.Drawing.FontStyle]::Bold)
+    $bl.Padding = New-Object System.Windows.Forms.Padding(4, 2, 4, 2)
+    $bl.Location = New-Object System.Drawing.Point(8, 28)
+    $script:HelpBadgeLabels += $bl
+    $script:HelpHeaderPanel.Controls.Add($bl)
+}
+$script:TabHelp.Controls.Add($script:HelpHeaderPanel)
+$script:HelpHeaderPanel.BringToFront()
 $txtHelp.BringToFront()
 # L'infobulle du bouton est posée plus bas, avec les autres : $toolTip n'existe
 # pas encore à ce point du fichier.
@@ -465,7 +532,8 @@ $script:BtnHelpPin.Add_Click({ Set-KitHelpPinned (-not $script:HelpPinned) })
 # créer de trou. Le bouton épingle est dans la liste : le survoler doit aussi
 # désarmer le survol en attente, sinon il remplacerait la rubrique juste avant
 # le clic d'épinglage.
-foreach ($helpZone in @($script:TabHelp, $txtHelp, $script:HelpPinBar, $script:BtnHelpPin)) {
+foreach ($helpZone in (@($script:TabHelp, $txtHelp, $script:HelpPinBar, $script:BtnHelpPin,
+                         $script:HelpHeaderPanel, $script:HelpKindLabel, $script:HelpBreadcrumbLabel) + $script:HelpBadgeLabels)) {
     $helpZone.Add_MouseEnter({ $script:HelpHoverTimer.Stop() })
 }
 
@@ -683,6 +751,21 @@ $script:ActionSummary.ForeColor = ConvertTo-KitColor $script:Palette.InkSoft
 $script:ActionSummary.Font = New-Object System.Drawing.Font('Segoe UI', 9)
 $script:HostAction.Controls.Add($script:ActionSummary)
 
+# Indicateur du filet de sauvegarde (v2.5) : vert quand un disque externe est
+# prêt à recevoir la copie des dossiers personnels, orange sinon. Rafraîchi à
+# l'ouverture, au retour de focus, aux changements de cases et au lancement.
+$script:BackupNetLabel = New-Object System.Windows.Forms.Label
+# Largeur bornée par le layout (pas d'AutoSize) : à la taille minimale de
+# fenêtre, le texte le plus long passait sous le bouton LANCER. AutoEllipsis
+# coupe la phrase, jamais la couleur, qui porte l'essentiel du signal.
+$script:BackupNetLabel.AutoSize = $false
+$script:BackupNetLabel.AutoEllipsis = $true
+$script:BackupNetLabel.Location = New-Object System.Drawing.Point(14, 18)   # recalé par le layout
+$script:BackupNetLabel.Font = New-Object System.Drawing.Font('Segoe UI', 9)
+$script:BackupNetLabel.Height = $script:BackupNetLabel.PreferredHeight       # même filet vertical que le résumé
+$script:BackupNetLabel.ForeColor = ConvertTo-KitColor $script:Palette.InkSoft
+$script:HostAction.Controls.Add($script:BackupNetLabel)
+
 # Progression custom (la ProgressBar système ne se colore pas) : piste + remplissage.
 $script:ActionProgressTrack = New-Object System.Windows.Forms.Panel
 $script:ActionProgressTrack.Height = 8
@@ -730,7 +813,15 @@ function Update-KitActionBarLayout {
     $btnCancel.Location = New-Object System.Drawing.Point(($w - $btnCancel.Width - 14), 10)
     $btnReport.Location = New-Object System.Drawing.Point(($w - $btnReport.Width - 14), 10)
     $script:BtnNewRun.Location = New-Object System.Drawing.Point(($w - $btnReport.Width - 14 - $script:BtnNewRun.Width - 10), 10)
-    $left = $script:ActionSummary.Right + 20
+    # Indicateur de filet, entre le résumé et les boutons. Sa largeur est bornée
+    # par la place qui reste devant le bouton LANCER (le seul affiché quand le
+    # filet l'est, en phase Préparer) : sans ce plafond, le texte le plus long
+    # passe sous le bouton dès que la fenêtre approche sa taille minimale.
+    $filetLeft = $script:ActionSummary.Right + 20
+    $filetMax  = [Math]::Max(0, ($w - $btnRun.Width - 14 - 20) - $filetLeft)
+    $script:BackupNetLabel.Location = New-Object System.Drawing.Point($filetLeft, 18)
+    $script:BackupNetLabel.Width = [Math]::Min($script:BackupNetLabel.PreferredWidth, $filetMax)
+    $left = if ($script:BackupNetLabel.Visible) { $script:BackupNetLabel.Right + 20 } else { $filetLeft }
     $script:ActionProgressTrack.Location = New-Object System.Drawing.Point($left, 24)
     $script:ActionProgressTrack.Width = [Math]::Max(80, $w - $left - $btnCancel.Width - 40)
 }
@@ -750,6 +841,76 @@ $toolTip = New-Object System.Windows.Forms.ToolTip
 $toolTip.InitialDelay = 500
 $toolTip.AutoPopDelay = 30000   # 5 s ne suffisaient pas à lire une explication complète
 
+# Set-KitHelpAnchorByKey : pose le liseré sur la ligne de timeline dont l'aide
+# est affichée, et le retire partout ailleurs. Une seule ancre à la fois ;
+# clé non-module ou vide = aucune ligne marquée (l'en-tête identifie déjà
+# l'élément). Épinglage et gel : l'aide ne change pas, l'ancre non plus.
+function Set-KitHelpAnchorByKey {
+    [CmdletBinding()]
+    param([AllowEmptyString()][string]$Key = '')
+    try {
+        $newId = ''
+        if ($Key -match '^module\.([0-9]{2})$' -and $script:ModuleRows.ContainsKey($Matches[1])) {
+            $newId = $Matches[1]
+        }
+        if ($script:HelpAnchorId -eq $newId) { return }
+        if ($script:HelpAnchorId -and $script:ModuleRows.ContainsKey($script:HelpAnchorId)) {
+            Set-KitRowHelpAnchor -Row $script:ModuleRows[$script:HelpAnchorId] -On $false
+        }
+        if ($newId) { Set-KitRowHelpAnchor -Row $script:ModuleRows[$newId] -On $true }
+        $script:HelpAnchorId = $newId
+    }
+    catch { }
+}
+
+# Update-KitHelpHeader : synchronise l'en-tête contextuel avec la rubrique
+# affichée. Clé vide = retour à l'invite d'accueil (en-tête générique, aucun
+# badge). Ne lève jamais : l'aide ne casse pas la GUI.
+function Update-KitHelpHeader {
+    [CmdletBinding()]
+    param(
+        [AllowEmptyString()][string]$Key = '',
+        [AllowNull()][object]$Entry = $null
+    )
+    try {
+        # Extinction d'abord : si le rendu lève en cours de route, l'en-tête ne
+        # garde jamais les badges de la rubrique précédente sous un type neuf
+        # (revues T2/T4, catch muet). La boucle rallume ceux qui existent.
+        foreach ($bl in $script:HelpBadgeLabels) { $bl.Visible = $false; $bl.Tag = $false }
+        $lookup = if ([string]::IsNullOrWhiteSpace($Key)) { 'general' } else { $Key }
+        $info = Get-HelpHeaderInfo -Key $lookup
+        $script:HelpKindLabel.Text = $info.KindText
+        $script:HelpBreadcrumbLabel.Text = $info.Breadcrumb
+        $script:HelpBreadcrumbLabel.Location = New-Object System.Drawing.Point(($script:HelpKindLabel.Right + 8), 6)
+        $badges = @()
+        if ($null -ne $Entry) { $badges = @(Get-HelpBadges -Entry $Entry) }
+        $x = 8
+        for ($i = 0; $i -lt $script:HelpBadgeLabels.Count; $i++) {
+            $bl = $script:HelpBadgeLabels[$i]
+            if ($i -lt $badges.Count) {
+                $bl.Text = $badges[$i].Text
+                $colors = Get-KitBadgeLevelColors -Level $badges[$i].Level
+                $bl.BackColor = ConvertTo-KitColor $colors.Back
+                $bl.ForeColor = ConvertTo-KitColor $colors.Fore
+                $bl.Location = New-Object System.Drawing.Point($x, 28)
+                $bl.Visible = $true
+                # Le Tag double Visible en témoin logique, comme le liseré d'ancre
+                # (Set-KitRowHelpAnchor) : sur une fenêtre jamais affichée, Visible
+                # retourne toujours faux et le SelfTest ne pourrait pas compter les
+                # badges rendus. Le Tag, lui, se relit sans fenêtre.
+                $bl.Tag = $true
+                $x = $bl.Right + 6
+            }
+            else { $bl.Visible = $false; $bl.Tag = $false }
+        }
+    }
+    catch { }
+}
+# État d'accueil : l'en-tête existe dès l'ouverture, avant tout survol. L'appel
+# vit ici et non près de la création du panneau : la fonction n'y est pas encore
+# définie.
+Update-KitHelpHeader -Key ''
+
 # Show-KitHelp : met à jour l'onglet Aide sans jamais le ramener au premier plan
 # (pendant une exécution, l'opérateur regarde le journal).
 function Show-KitHelp {
@@ -758,6 +919,8 @@ function Show-KitHelp {
     try {
         $entry = Get-HelpEntry -Catalog $script:HelpCatalog -Key $Key
         $txtHelp.Text = Format-HelpPanel -Entry $entry
+        Update-KitHelpHeader -Key $Key -Entry $entry
+        Set-KitHelpAnchorByKey -Key $Key
     }
     catch { }   # l'aide ne doit jamais casser la GUI
 }
@@ -783,9 +946,15 @@ function Show-KitProfileHelpCore {
         # d'aide, quelle que soit la provenance du texte.
         try { $txtHelp.Text = Format-HelpPanel -Entry ([PSCustomObject]@{ title = "Profil $Name"; what = $desc }) }
         catch { }
+        # Pas d'entrée de catalogue ici : l'en-tête se contente du type et du fil
+        # d'Ariane que la clé porte, sans badge.
+        Update-KitHelpHeader -Key "profile.$Name"
+        Set-KitHelpAnchorByKey -Key ''
         return
     }
     $txtHelp.Text = $script:HelpPrompt
+    Update-KitHelpHeader -Key ''
+    Set-KitHelpAnchorByKey -Key ''
 }
 
 # Le gel ne se latche pas : il se REDÉRIVE de la position réelle du curseur.
@@ -900,6 +1069,7 @@ $cmbDebloat.Add_MouseEnter({
 })
 $cmbDebloat.Add_SelectedIndexChanged({
     # Choisir une politique est un acte volontaire : l'aide suit sans délai.
+    $lblDebloatHint.Text = Get-DebloatPolicyHint -PolicyFr ([string]$cmbDebloat.SelectedItem)
     $k = $debloatKeys[[string]$cmbDebloat.SelectedItem]
     if ($k) { Request-KitHelp -Key $k -Source Direct }
 })
@@ -1042,7 +1212,7 @@ function Start-NextModule {
 function Build-Queue {
     $script:Queue = @()
     $dry = $cbDryRun.Checked
-    $policyMap = @{ 'Conservateur' = 'Conservative'; 'Standard' = 'Standard'; 'Agressif' = 'Aggressive' }
+    $policyMap = $script:DebloatPolicyMap
     $options = @{
         BackupData    = $cbBackupData.Checked
         ScanDefender  = $cbScanDefender.Checked
@@ -1083,6 +1253,56 @@ function Update-KitActionSummary {
     Update-KitActionBarLayout   # le libellé a changé de largeur : la piste se recale
 }
 
+# Update-KitBackupNetIndicator : rafraîchit l'indicateur de filet. Garde
+# anti-rafale de 2 s (Form.Activated se déclenche à chaque retour de focus) ;
+# -Force la contourne pour les changements de cases et le lancement.
+function Update-KitBackupNetIndicator {
+    [CmdletBinding()]
+    param([switch]$Force)
+    try {
+        if (-not $Force -and ((Get-Date) - $script:BackupNetLastRefresh).TotalSeconds -lt 2) { return }
+        $script:BackupNetLastRefresh = Get-Date
+        if ($UiPreview) {
+            # Captures reproductibles, pas de fuite du poste de capture : la lettre
+            # et l'espace libre réels n'ont rien à faire dans les images de
+            # documentation (même règle que PC-DEMO pour le nom de machine).
+            $script:BackupNetState = 'external'
+            $d = Get-KitBackupNetDisplay -State 'external' -Letter 'E' -FreeGB 120
+        }
+        else {
+            $candidates = @(Get-KitExternalBackupVolumes)
+            $m01 = $script:ModuleRows['01'].CheckBox.Checked
+            $state = Get-KitBackupNetState -Module01Checked $m01 -BackupDataChecked $cbBackupData.Checked -Candidates $candidates
+            $script:BackupNetState = $state
+            $letter = ''
+            $free = 0.0
+            if ($candidates.Count -gt 0) {
+                $letter = "$($candidates[0].DriveLetter)"
+                $free = [double]($candidates[0].SizeRemaining) / 1GB
+            }
+            $d = Get-KitBackupNetDisplay -State $state -Letter $letter -FreeGB $free
+        }
+        $script:BackupNetLabel.Text = $d.Text
+        $couleur = if ($d.Level -eq 'Ok') { $script:Palette.Ok } else { $script:Palette.Warn }
+        $script:BackupNetLabel.ForeColor = ConvertTo-KitColor $couleur
+        Update-KitActionBarLayout
+    }
+    catch {
+        # Détection ratée : l'état de contrat ne doit pas rester sur une valeur
+        # rassurante périmée. Le libellé garde son dernier texte, la variable non.
+        $script:BackupNetState = 'none'
+    }
+}
+
+# Filet de sauvegarde : détection au chargement, au retour de focus (garde
+# anti-rafale) et quand la sauvegarde se coche ou se décoche.
+$form.Add_Activated({ Update-KitBackupNetIndicator })
+$cbBackupData.Add_CheckedChanged({ Update-KitBackupNetIndicator -Force })
+$script:ModuleRows['01'].CheckBox.Add_CheckedChanged({ Update-KitBackupNetIndicator -Force })
+$script:BackupNetLabel.Add_MouseEnter({ Request-KitHelp -Key 'status.backupnet' })
+$toolTip.SetToolTip($script:BackupNetLabel, (Format-HelpTooltip -Entry (Get-HelpEntry -Catalog $script:HelpCatalog -Key 'status.backupnet') -Width 90))
+Update-KitBackupNetIndicator -Force
+
 function Set-KitActionPhase {
     # Bascule la barre d'action (et les boutons) dans une phase.
     # Data : Prepare -> rien ; Running -> rien (le Tick alimente) ;
@@ -1099,6 +1319,7 @@ function Set-KitActionPhase {
             $btnReport.Visible = $false
             $script:BtnNewRun.Visible = $false
             $script:ActionProgressTrack.Visible = $false
+            $script:BackupNetLabel.Visible = $true
             $script:ActionSummary.ForeColor = ConvertTo-KitColor $script:Palette.InkSoft
             Update-KitRunButtonText
             Update-KitActionSummary
@@ -1109,6 +1330,7 @@ function Set-KitActionPhase {
             $btnReport.Visible = $false
             $script:BtnNewRun.Visible = $false
             $script:ActionProgressTrack.Visible = $true
+            $script:BackupNetLabel.Visible = $false
             $script:ActionProgressFill.Width = 0
         }
         'Done' {
@@ -1117,6 +1339,7 @@ function Set-KitActionPhase {
             $btnReport.Visible = $true
             $script:BtnNewRun.Visible = $true
             $script:ActionProgressTrack.Visible = $false
+            $script:BackupNetLabel.Visible = $false
             if ($Data.ContainsKey('Bilan')) { $script:ActionSummary.Text = [string]$Data.Bilan }
         }
     }
@@ -1409,6 +1632,22 @@ $btnRun.Add_Click({
             "$tete`r`n`r`n$($foreign -join "`r`n")`r`n`r`n$corps",
             "PC-Refresh-Kit - fiche étrangère détectée", 'YesNo', 'Warning')
         if ($r -eq 'No') { return }
+    }
+    # Vérité avant lancement (v2.5) : en intervention réelle, tout ce qui
+    # mérite d'être su s'annonce en UNE confirmation. Rien à signaler = aucune
+    # friction. En simulation, jamais de confirmation - et une file vide non
+    # plus : « Aucune étape sélectionnée » suffit, pas d'alarme sur une
+    # intervention qui n'existe pas.
+    if (@(Get-KitCheckedIds).Count -gt 0) {
+        Update-KitBackupNetIndicator -Force
+        $m03 = $script:ModuleRows['03'].CheckBox.Checked
+        $preRunWarnings = @(Get-KitPreRunWarnings -BackupState $script:BackupNetState -Module03Checked $m03 `
+            -Policy ([string]$script:DebloatPolicyMap[[string]$cmbDebloat.SelectedItem]) -IsDryRun $cbDryRun.Checked)
+        if ($preRunWarnings.Count -gt 0) {
+            $msg = "Avant de lancer :`r`n`r`n- " + ($preRunWarnings -join "`r`n`r`n- ") + "`r`n`r`nContinuer ?"
+            $r = [System.Windows.Forms.MessageBox]::Show($msg, 'PC-Refresh-Kit - avant de lancer', 'YesNo', 'Warning')
+            if ($r -eq 'No') { return }
+        }
     }
     Build-Queue
     # Calculer le préfixe de titre APRÈS Build-Queue (l'état cbDryRun est figé à ce moment)
@@ -1757,6 +1996,12 @@ $script:BtnNewRun.Add_Click({
     # juste après sa remise en place : désarmer le minuteur AVANT de la reposer.
     $script:HelpHoverTimer.Stop()
     $txtHelp.Text = $script:HelpPrompt
+    # L'en-tête repart avec elle : laissé tel quel, il annoncerait encore le type
+    # et les badges de la dernière rubrique lue pendant le run précédent.
+    Update-KitHelpHeader -Key ''
+    # Même raison pour l'ancre : sans ce retrait, la timeline garderait le liseré
+    # de la dernière étape lue pendant le run précédent.
+    Set-KitHelpAnchorByKey -Key ''
     foreach ($m in $script:Modules) {
         Set-KitModuleRowState -Row $script:ModuleRows[$m.Id] -State Pending -Detail '' -Mdl2Available $script:Mdl2
     }
@@ -2007,6 +2252,99 @@ if ($SelfTest) {
     Assert-KitSelfTest 'timeline : 16 positions conformes' ($posOk -and $pos -eq 16)
     Assert-KitSelfTest 'aide : 16 titres Etape N conformes' ($titreOk -and $pos -eq 16)
 
+    # --- v2.5 : en-tete contextuel ---
+    Show-KitHelp -Key 'module.03'
+    Assert-KitSelfTest 'aide v2.5 : kind ETAPE' ($script:HelpKindLabel.Text -eq 'ÉTAPE')
+    Assert-KitSelfTest 'aide v2.5 : breadcrumb Intervention > Etapes' ($script:HelpBreadcrumbLabel.Text -eq 'Intervention > Étapes')
+    Show-KitHelp -Key 'action.run'
+    Assert-KitSelfTest 'aide v2.5 : kind ACTION' ($script:HelpKindLabel.Text -eq 'ACTION')
+    Update-KitHelpHeader -Key ''
+    Assert-KitSelfTest 'aide v2.5 : repli accueil AIDE' ($script:HelpKindLabel.Text -eq 'AIDE')
+    # Ordre de docking, verrouillé ici parce qu'il se retourne silencieusement :
+    # entre deux Dock=Top, WinForms colle à l'arête celui qui est le plus en
+    # ARRIÈRE du plan. Sans le BringToFront de l'en-tête, l'épingle glisse sous
+    # lui sans qu'aucune autre assertion ne bronche. Hauteurs relatives : ajuster
+    # un Height ne doit pas faire rougir cette ligne, seul l'ordre compte.
+    Assert-KitSelfTest 'aide v2.5 : epingle en tete, en-tete puis texte' (
+        $script:HelpPinBar.Top -eq 0 -and
+        $script:HelpHeaderPanel.Top -eq $script:HelpPinBar.Height -and
+        $txtHelp.Top -eq ($script:HelpPinBar.Height + $script:HelpHeaderPanel.Height))
+
+    # --- v2.5 : ancre visuelle ---
+    # Le parcours interroge l'état LOGIQUE de l'ancre, jamais AnchorStripe.Visible :
+    # un contrôle parenté à une fenêtre non affichée renvoie TOUJOURS faux (règle
+    # rappelée en tête de ce bloc), ce qui rendrait ces assertions rouges et,
+    # pire, ferait passer au vert le retrait pour la mauvaise raison. L'unicité se
+    # vérifie sur le témoin Tag, que Set-KitRowHelpAnchor tient à jour en double
+    # de Visible et qui, lui, se relit sans fenêtre ; que le liseré suive
+    # vraiment, que les états d'exécution ne l'écrasent pas : tests/Theme.Tests.ps1.
+    Show-KitHelp -Key 'module.03'
+    Assert-KitSelfTest 'ancre v2.5 : posee sur la ligne 03' ($script:HelpAnchorId -eq '03')
+    Assert-KitSelfTest 'ancre v2.5 : liseres uniques via temoin Tag' (@($script:Modules | Where-Object { [bool]$script:ModuleRows[$_.Id].AnchorStripe.Tag }).Count -eq 1)
+    Show-KitHelp -Key 'module.05'
+    Assert-KitSelfTest 'ancre v2.5 : deplacee sur 05' ($script:HelpAnchorId -eq '05')
+    # Seul endroit où l'unicité a du mordant : 03 était ancrée juste avant, donc
+    # un témoin unique posé sur 05 prouve que la branche d'extinction du liseré
+    # précédent a bien tourné. Deux lignes plus haut, 03 étant la seule ligne
+    # jamais ancrée, l'assertion passerait même sans cette branche.
+    Assert-KitSelfTest 'ancre v2.5 : le deplacement eteint le lisere precedent' (
+        (@($script:Modules | Where-Object { [bool]$script:ModuleRows[$_.Id].AnchorStripe.Tag }).Count -eq 1) -and
+        [bool]$script:ModuleRows['05'].AnchorStripe.Tag)
+    Set-KitHelpAnchorByKey -Key 'module.99'
+    Assert-KitSelfTest 'ancre v2.5 : ligne inexistante, aucune ancre' ($script:HelpAnchorId -eq '')
+    Show-KitHelp -Key 'module.05'
+    Show-KitHelp -Key 'action.run'
+    Assert-KitSelfTest 'ancre v2.5 : retiree sur une cle non module' ($script:HelpAnchorId -eq '')
+
+    # --- v2.5 : badges du catalogue ---
+    # Comptage sur le témoin Tag, jamais sur Visible : même règle que l'ancre
+    # ci-dessus, une fenêtre non affichée rend Visible faux pour tous ses enfants.
+    Show-KitHelp -Key 'module.03'
+    Assert-KitSelfTest 'badges v2.5 : trois badges visibles pour module.03' (@($script:HelpBadgeLabels | Where-Object { [bool]$_.Tag }).Count -eq 3)
+    Assert-KitSelfTest 'badges v2.5 : premier badge = reversible via store' ($script:HelpBadgeLabels[0].Text -eq 'RÉVERSIBLE VIA STORE')
+    # Une rubrique à badge unique après une rubrique à trois : sans cette
+    # assertion, un Tag qui ne redescendrait jamais laisserait la précédente au
+    # vert pour de mauvaises raisons. Le texte du label 1 reste celui du rendu
+    # précédent, seul le témoin dit qu'il n'est plus affiché.
+    Show-KitHelp -Key 'action.delfiche'
+    Assert-KitSelfTest 'badges v2.5 : un seul badge pour action.delfiche' (
+        (@($script:HelpBadgeLabels | Where-Object { [bool]$_.Tag }).Count -eq 1) -and
+        $script:HelpBadgeLabels[0].Text -eq 'IRRÉVERSIBLE')
+
+    # --- v2.5 : indicateur de filet ---
+    Update-KitBackupNetIndicator -Force   # la fenetre n'est pas forcement affichee en SelfTest : detection explicite
+    Assert-KitSelfTest 'filet v2.5 : indicateur renseigne' (-not [string]::IsNullOrWhiteSpace($script:BackupNetLabel.Text))
+    Assert-KitSelfTest 'filet v2.5 : etat connu' ($script:BackupNetState -in @('off', 'none', 'internal', 'external'))
+    $etatFiletAvant = $script:BackupNetState
+    $caseSauvegardeAvant = $cbBackupData.Checked   # la bascule ci-dessous divergerait du profil charge : restauree apres
+    $cbBackupData.Checked = $false
+    Assert-KitSelfTest 'filet v2.5 : decocher bascule sur off' ($script:BackupNetState -eq 'off')
+    $cbBackupData.Checked = $true
+    Assert-KitSelfTest 'filet v2.5 : recocher restaure la detection' ($script:BackupNetState -eq $etatFiletAvant)
+    $cbBackupData.Checked = $caseSauvegardeAvant
+    Update-KitBackupNetIndicator -Force   # etat de contrat recale sur la case restauree
+    # Gel geometrique : a la taille minimale de fenetre, le texte le plus long de
+    # l'indicateur passait sous le bouton LANCER (mesure en Task 5 : jusqu'a
+    # 157 px de chevauchement). Le plafond de largeur pose dans
+    # Update-KitActionBarLayout est verifie ici, a la largeur la plus contrainte
+    # que l'utilisateur puisse atteindre.
+    $tailleFenetreAvant = $form.Size
+    $form.Size = $form.MinimumSize
+    Update-KitActionBarLayout
+    $largeurBarre = $script:HostAction.ClientSize.Width
+    Assert-KitSelfTest 'filet v2.5 : jamais sous le bouton LANCER a la taille minimale' (
+        $largeurBarre -le $form.MinimumSize.Width -and
+        $script:BackupNetLabel.Right -le $btnRun.Left)
+    $form.Size = $tailleFenetreAvant
+    Update-KitActionBarLayout
+
+    # --- v2.5 : hint de politique ---
+    Assert-KitSelfTest 'hint v2.5 : suit la selection courante' ($lblDebloatHint.Text -eq (Get-DebloatPolicyHint -PolicyFr ([string]$cmbDebloat.SelectedItem)))
+    $cmbDebloat.SelectedIndex = 2
+    Assert-KitSelfTest 'hint v2.5 : agressif annonce la suppression' ($lblDebloatHint.Text -eq 'Les apps douteuses sont retirées, même utilisées')
+    $cmbDebloat.SelectedIndex = 1
+    Assert-KitSelfTest 'hint v2.5 : retour standard' ($lblDebloatHint.Text -eq (Get-DebloatPolicyHint -PolicyFr 'Standard'))
+
     # 6 ter. Option par intervention (module 16) : décochée à l'ouverture, et la
     # cocher ne fait PAS diverger le profil - elle ne vit dans aucun JSON.
     # La vérification repart d'un profil NOMMÉ : depuis (personnalisé), où l'étape
@@ -2052,8 +2390,8 @@ if ($SelfTest) {
     # couvre tout ce qui ferait sauter des assertions sans lever (retour anticipé,
     # bloc supprimé par mégarde). Le nombre attendu se met à jour à la main quand
     # une assertion est ajoutée ; la ligne de succès, elle, reste dynamique.
-    if ($script:SelfTestCount -lt 27) {
-        Write-Host "[SELFTEST] ECHEC : $script:SelfTestCount assertion(s) executee(s) sur 27 attendues"
+    if ($script:SelfTestCount -lt 49) {
+        Write-Host "[SELFTEST] ECHEC : $script:SelfTestCount assertion(s) executee(s) sur 49 attendues"
         exit 1
     }
     # Compte tenu à l'exécution : ajouter une assertion ne peut pas laisser

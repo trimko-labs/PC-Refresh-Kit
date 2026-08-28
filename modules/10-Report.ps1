@@ -121,7 +121,11 @@ foreach ($lf in $logFiles) {
     }
 }
 
-$rebootMarkers = @(Get-RebootMarkersFromLogs -Lines $allLines)
+# Contrat (a) de Get-RebootMarkersFromLogs (retour ,@(...)) : ASSIGNER puis
+# envelopper. En enveloppe directe, .Count valait 1 même sans marqueur et le
+# rapport réclamait un redémarrage à chaque intervention.
+$markers       = Get-RebootMarkersFromLogs -Lines $allLines
+$rebootMarkers = @($markers)
 $rebootState   = Test-RebootPending
 $rebootNeeded  = ($rebootMarkers.Count -gt 0) -or $rebootState.Pending
 

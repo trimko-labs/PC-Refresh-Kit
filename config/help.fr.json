@@ -3,6 +3,7 @@
   "entries": {
     "module.00": {
       "title": "Étape 1 - Diagnostic : état des lieux",
+      "badges": { "reversible": "readonly", "data": "untouched", "duration": "1-3 min" },
       "short": "Lit la configuration de la machine et fige un état avant intervention. Ne modifie rien.",
       "what": "Relève le modèle, le processeur, la mémoire, le type et la santé des disques (SMART), le chiffrement BitLocker, l'antivirus présent, les programmes lancés au démarrage et l'espace libre. Ces valeurs servent de point de comparaison au rapport final.",
       "protects": "Aucune écriture sur la machine : ce module lit uniquement.",
@@ -12,8 +13,9 @@
     },
     "module.01": {
       "title": "Étape 2 - Sauvegarde : filet de sécurité",
-      "short": "Crée un point de restauration Windows, et copie les dossiers personnels si un disque externe est branché.",
-      "what": "Crée un point de restauration système, puis copie Documents, Bureau, Images, Téléchargements, Vidéos et Musique vers le disque externe branché.",
+      "badges": { "data": "copyonly", "duration": "10-30 min" },
+      "short": "Copie les dossiers personnels vers un disque externe - jamais déplacés ni supprimés - et crée un point de restauration Windows.",
+      "what": "Crée un point de restauration système, puis copie Documents, Bureau, Images, Téléchargements, Vidéos et Musique vers le disque externe branché. Pourquoi un disque externe : le point de restauration Windows ne protège pas les fichiers personnels, et une copie laissée sur le même disque disparaîtrait avec lui en cas de panne pendant l'intervention. Le disque externe est le seul filet qui survit.",
       "protects": "Aucun fichier d'origine n'est déplacé ni supprimé : la copie est une copie.",
       "reversible": "Sans objet. C'est ce module qui rend les autres réversibles.",
       "duration": "10 à 30 minutes selon le volume de données",
@@ -21,6 +23,7 @@
     },
     "module.16": {
       "title": "Étape 3 - Filets de secours : prêt pour le pire",
+      "badges": { "data": "untouched", "duration": "2-5 min" },
       "short": "Réarme les protections de récupération Windows et met les ruches du registre au coffre, sur la clé et en local.",
       "what": "Vérifie et réactive l'environnement de récupération Windows (WinRE) et l'auto-réparation au démarrage, agrandit si besoin l'espace réservé aux points de restauration (jamais de réduction), puis sauvegarde les cinq ruches du registre dans un coffre daté : sur la clé USB du kit et dans une copie locale. Un manifeste enregistre l'empreinte de la machine et la taille exacte de chaque fichier : le mode secours de la clé (secours.bat) s'en sert pour réparer un PC qui ne démarre plus.",
       "protects": "Le coffre contient les cinq ruches du registre, dont SAM et SECURITY : des secrets de comptes. Chaque copie posée sur un support qui gère les droits d'accès (NTFS ou ReFS : la copie locale, mais aussi une seconde partition ou une clé formatée en NTFS) est verrouillée pour les seuls administrateurs avant la première écriture, et rien n'est écrit si ce verrou échoue. Seule une clé en FAT32 ou exFAT ne peut porter aucun verrou : là, la protection est physique, conservez la clé comme un trousseau. La clé de récupération BitLocker n'est exportée que si l'option est cochée, et uniquement sur une clé amovible.",
@@ -30,6 +33,7 @@
     },
     "module.02": {
       "title": "Étape 4 - Antivirus : retour à Windows Defender",
+      "badges": { "reversible": "yes", "data": "untouched", "duration": "5-20 min" },
       "short": "Retire Avast et remet Windows Defender en service. Les autres antivirus tiers sont signalés, à désinstaller à la main.",
       "what": "Désinstalle Avast proprement : uninstaller natif, puis outil Avast Clear si des résidus subsistent. Réactive ensuite Windows Defender avec la protection en temps réel, la protection cloud et l'anti-PUA, et lance une analyse si l'option est cochée. Si un autre antivirus tiers est détecté, Norton ou McAfee par exemple, le module le signale dans le journal et n'y touche pas : Windows Defender reste alors passif tant que cet antivirus n'est pas retiré à la main.",
       "protects": "Un seul antivirus doit tourner à la fois : deux moteurs concurrents se ralentissent et se neutralisent. Aucun antivirus autre qu'Avast n'est désinstallé sans décision de l'opérateur.",
@@ -39,7 +43,8 @@
     },
     "module.03": {
       "title": "Étape 5 - Désencombrement : applications préinstallées",
-      "short": "Retire les applications préinstallées inutiles, en s'appuyant sur une liste de protection.",
+      "badges": { "reversible": "store", "data": "untouched", "duration": "5-15 min" },
+      "short": "Retire des applications préinstallées d'une liste fermée - jamais vos logiciels installés.",
       "what": "Supprime les applications du Microsoft Store et du constructeur qui n'ont jamais servi : jeux de démonstration, applications Bing, suites d'essai, utilitaires de marque. La politique de débloatage choisie décide du sort des applications douteuses.",
       "protects": "Le Microsoft Store, Defender, winget, les pilotes graphiques et les jeux Game Pass ne sont jamais retirés. En politique Standard, une application utilisée dans les 90 derniers jours est conservée.",
       "reversible": "Non, mais toute application retirée se réinstalle gratuitement depuis le Microsoft Store.",
@@ -48,6 +53,7 @@
     },
     "module.04": {
       "title": "Étape 6 - Confidentialité : collecte de données",
+      "badges": { "reversible": "yes", "data": "untouched", "duration": "2-5 min" },
       "short": "Réduit la télémétrie de Windows et installe une protection qui survit aux mises à jour.",
       "what": "Coupe la remontée de données de diagnostic, l'identifiant publicitaire, les suggestions et les fonctions de collecte associées (Copilot, Widgets, Recall). Installe TelemetryGuard, qui réapplique ces réglages après chaque mise à jour de Windows au moyen de deux tâches planifiées.",
       "protects": "SmartScreen, qui bloque les téléchargements dangereux, est conservé : il ne fait pas partie de la télémétrie.",
@@ -57,6 +63,7 @@
     },
     "module.05": {
       "title": "Étape 7 - Mises à jour",
+      "badges": { "reversible": "partial", "data": "untouched", "duration": "20-60+ min" },
       "short": "Installe les mises à jour de Windows et de tous les logiciels connus de winget.",
       "what": "Recherche et installe les mises à jour Windows en attente, puis met à jour l'ensemble des logiciels installés reconnus par winget.",
       "protects": "Si la machine est hors ligne, le module s'arrête proprement sans erreur au lieu de tourner à vide.",
@@ -66,6 +73,7 @@
     },
     "module.06": {
       "title": "Étape 8 - Logiciels : socle logiciel",
+      "badges": { "reversible": "yes", "data": "untouched", "duration": "10-20 min" },
       "short": "Installe le socle utile : navigateur, archiveur, lecteur PDF, lecteur multimédia, bureautique.",
       "what": "Installe la liste définie dans config\\apps.json : Firefox, 7-Zip, VLC, Sumatra PDF et LibreOffice par défaut. Les entrées marquées facultatives demandent confirmation une par une.",
       "protects": "Une application déjà présente n'est pas réinstallée.",
@@ -75,6 +83,7 @@
     },
     "module.07": {
       "title": "Étape 9 - Nettoyage et réparation",
+      "badges": { "reversible": "no", "data": "optin", "duration": "30-60 min" },
       "short": "Vide les fichiers temporaires, répare les composants système et optimise le disque.",
       "what": "Supprime les fichiers temporaires et les caches, exécute DISM et SFC pour réparer les composants de Windows, puis optimise le disque : défragmentation sur disque mécanique, TRIM sur disque SSD.",
       "protects": "Le type de disque est détecté avant l'optimisation : aucun SSD n'est jamais défragmenté. DISM est ignoré si moins de 8 Go sont libres, plutôt que d'échouer à mi-parcours.",
@@ -84,6 +93,7 @@
     },
     "module.08": {
       "title": "Étape 10 - Comptes et droits",
+      "badges": { "reversible": "yes", "data": "untouched", "duration": "2 min" },
       "short": "Crée un compte administrateur dédié et bascule le compte quotidien en droits standard.",
       "what": "Crée le compte Admin-Local avec une phrase de passe mémorisable, l'ajoute au groupe Administrateurs, puis rétrograde le compte quotidien en compte standard. La phrase de passe est écrite dans la fiche PC.",
       "protects": "Un contrôle interdit l'opération s'il ne resterait aucun administrateur actif : impossible de se verrouiller hors de la machine.",
@@ -93,6 +103,7 @@
     },
     "module.09": {
       "title": "Étape 11 - Confort d'utilisation",
+      "badges": { "reversible": "yes", "data": "untouched", "duration": "1-2 min" },
       "short": "Rend Windows plus lisible : extensions de fichiers visibles, suggestions et publicités coupées.",
       "what": "Affiche les extensions de fichiers, coupe les suggestions de l'écran de verrouillage et du menu Démarrer, désactive les publicités intégrées. Désinstalle OneDrive si l'option correspondante est cochée.",
       "protects": "Les fichiers déjà synchronisés avec OneDrive restent sur le disque local.",
@@ -102,6 +113,7 @@
     },
     "module.10": {
       "title": "Étape 16 - Rapport d'intervention",
+      "badges": { "data": "untouched", "duration": "1 min" },
       "short": "Produit le rapport avant et après, ainsi que la note à remettre à l'utilisateur.",
       "what": "Compare l'état relevé par l'étape Diagnostic à l'état final et chiffre le résultat : espace disque récupéré, programmes au démarrage, applications retirées ou ajoutées, temps de démarrage. Produit un rapport HTML présentable et un rapport texte, plus une note en langage clair pour l'utilisateur.",
       "protects": "Le mot de passe administrateur n'est jamais recopié dans le rapport : il n'existe que dans la fiche PC.",
@@ -111,6 +123,7 @@
     },
     "module.11": {
       "title": "Étape 12 - Nettoyage profond : résidus de désinstallation",
+      "badges": { "reversible": "partial", "data": "untouched", "duration": "2-5 min" },
       "short": "Supprime les raccourcis morts et les dossiers laissés par les applications retirées.",
       "what": "Parcourt le menu Démarrer et supprime les raccourcis dont la cible n'existe plus, puis supprime les dossiers résiduels des applications désinstallées, d'après une liste blanche et le journal de l'étape Désencombrement.",
       "protects": "Aucune opération sur le registre. Seuls les sous-dossiers des emplacements d'installation connus peuvent être supprimés, jamais leur racine.",
@@ -120,6 +133,7 @@
     },
     "module.12": {
       "title": "Étape 13 - Démarrage : programmes au démarrage",
+      "badges": { "reversible": "yes", "data": "untouched", "duration": "1-3 min" },
       "short": "Désactive, de façon réversible, les programmes qui se lancent inutilement au démarrage.",
       "what": "Désactive les entrées figurant dans la liste noire config\\startup-blacklist.json : mises à jour Adobe et Java, assistants iTunes et QuickTime, lanceurs de jeux, agents de synchronisation. Trois mécanismes selon le cas : marquage dans l'onglet Démarrage, déplacement du raccourci vers un dossier de sauvegarde, désactivation de la tâche planifiée.",
       "protects": "Rien hors liste noire n'est touché, et rien n'est jamais supprimé. Le profil d'intervention peut préserver certaines entrées, par exemple les lanceurs de jeux avec le profil gamer.",
@@ -129,6 +143,7 @@
     },
     "module.13": {
       "title": "Étape 14 - Navigateurs : détournements de navigateur",
+      "badges": { "reversible": "yes", "data": "untouched", "duration": "1-2 min" },
       "short": "Retire les moteurs de recherche, pages d'accueil et extensions imposés à Chrome et Edge.",
       "what": "Supprime les stratégies de registre qui forcent un moteur de recherche, une page d'accueil, une page de nouvel onglet ou une extension, quand elles figurent dans la liste des indésirables. Les autres extensions imposées sont seulement signalées dans le journal.",
       "protects": "La clé de registre concernée est exportée en fichier .reg avant toute suppression. Si l'export échoue, la suppression est annulée.",
@@ -138,6 +153,7 @@
     },
     "module.14": {
       "title": "14 Undo - annulation",
+      "badges": { "data": "untouched", "duration": "1 min" },
       "short": "Annule les modifications réversibles du dernier passage, dans l'ordre inverse.",
       "what": "Relit le manifeste écrit par les étapes Démarrage et Navigateurs et défait chaque action : réactivation des programmes au démarrage, remise en place des raccourcis, réactivation des tâches planifiées, réimport des clés de registre des navigateurs.",
       "protects": "Ce module ne supprime jamais rien, il restaure. Il accepte le mode simulation pour voir ce qui serait annulé.",
@@ -147,6 +163,7 @@
     },
     "module.15": {
       "title": "Étape 15 - Réseau : réinitialisation réseau",
+      "badges": { "reversible": "no", "data": "untouched", "duration": "1 min + redémarrage" },
       "short": "Remet à zéro la configuration réseau. À réserver aux machines dont la connexion est défectueuse.",
       "what": "Réinitialise la pile TCP/IP, le catalogue Winsock et le cache DNS.",
       "protects": "Aucun mot de passe Wi-Fi n'est effacé.",
@@ -156,7 +173,8 @@
     },
     "option.backupdata": {
       "title": "Sauvegarder les données utilisateur",
-      "short": "Copie les dossiers personnels vers le disque externe branché, pendant l'étape Sauvegarde.",
+      "badges": { "data": "copyonly", "duration": "10-30 min" },
+      "short": "Copie les dossiers personnels vers le disque externe branché - une copie, jamais un déplacement.",
       "what": "Copie Documents, Bureau, Images, Téléchargements, Vidéos et Musique vers le disque externe. Sans disque externe branché, l'option est sans effet et seul le point de restauration est créé.",
       "protects": "Les données d'application, comme les messageries locales ou les mots de passe des navigateurs, ne sont pas copiées : elles se sauvegardent à la main si elles comptent.",
       "reversible": "Sans objet, il s'agit d'une copie.",
@@ -165,6 +183,7 @@
     },
     "option.scandefender": {
       "title": "Scanner avec Defender après bascule",
+      "badges": { "data": "untouched", "duration": "5-15 min" },
       "short": "Lance une analyse rapide après la remise en service de Windows Defender.",
       "what": "Met à jour les signatures Defender puis déclenche une analyse rapide à la fin de l'étape Antivirus. Les menaces trouvées pendant cette analyse sont listées dans le journal.",
       "reversible": "Sans objet, une analyse ne modifie rien tant qu'aucune menace n'est trouvée.",
@@ -173,6 +192,7 @@
     },
     "option.recycle": {
       "title": "Vider la corbeille",
+      "badges": { "reversible": "no", "data": "optin", "duration": "secondes" },
       "short": "Vide définitivement la corbeille de tous les disques.",
       "what": "Supprime le contenu de la corbeille pendant l'étape Nettoyage.",
       "reversible": "Non. Un fichier supprimé de la corbeille ne se récupère plus simplement.",
@@ -181,6 +201,7 @@
     },
     "option.winold": {
       "title": "Supprimer Windows.old",
+      "badges": { "reversible": "no", "data": "untouched", "duration": "2-10 min" },
       "short": "Supprime l'ancienne installation de Windows conservée après une mise à niveau.",
       "what": "Supprime le dossier Windows.old, qui occupe souvent entre 5 et 25 Go.",
       "reversible": "Non. Après suppression, le retour à la version précédente de Windows n'est plus possible.",
@@ -189,6 +210,7 @@
     },
     "option.cache": {
       "title": "Vider les caches des navigateurs",
+      "badges": { "reversible": "partial", "data": "untouched", "duration": "1-3 min" },
       "short": "Vide les fichiers temporaires de Chrome et Edge, tous profils confondus.",
       "what": "Supprime les caches des navigateurs pendant l'étape Nettoyage.",
       "protects": "Les favoris et les mots de passe enregistrés ne sont pas touchés.",
@@ -198,6 +220,7 @@
     },
     "option.onedrive": {
       "title": "Désinstaller OneDrive",
+      "badges": { "reversible": "yes", "data": "untouched", "duration": "2 min" },
       "short": "Retire OneDrive, bloque sa réinstallation automatique et coupe ses rappels.",
       "what": "Désinstalle OneDrive pendant l'étape Confort et empêche son retour lors des mises à jour de Windows.",
       "protects": "Les fichiers déjà présents sur le disque restent en place. Seule la synchronisation cesse.",
@@ -207,6 +230,7 @@
     },
     "option.oem": {
       "title": "Debloat constructeur (OEM)",
+      "badges": { "reversible": "yes", "data": "untouched", "duration": "5-10 min" },
       "short": "Retire les utilitaires du fabricant de la machine, au-delà des applications du Store.",
       "what": "Désinstalle les logiciels de marque du constructeur d'après les fiches de config\\oem-bloat, pendant l'étape Désencombrement. Fiches fournies actuellement : ASUS. Sur les autres marques, le module détecte le constructeur et le journalise sans rien retirer.",
       "protects": "Les utilitaires nécessaires au matériel, comme la gestion du pavé tactile ou des profils de ventilation, figurent en liste protégée.",
@@ -216,6 +240,7 @@
     },
     "option.netreset": {
       "title": "Réinitialiser le réseau",
+      "badges": { "reversible": "no", "data": "untouched", "duration": "1 min + redémarrage" },
       "short": "Active l'étape Réseau. À réserver aux machines dont la connexion est défectueuse.",
       "what": "Réinitialise la pile TCP/IP, Winsock et le cache DNS.",
       "reversible": "Non sans intervention manuelle, et un redémarrage est nécessaire ensuite.",
@@ -224,6 +249,7 @@
     },
     "option.bitlockerkey": {
       "title": "Exporter la clé BitLocker dans le coffre",
+      "badges": { "reversible": "yes", "data": "untouched", "duration": "secondes" },
       "short": "Écrit la clé de récupération BitLocker dans le coffre, sur une clé USB amovible uniquement. Décochée par défaut.",
       "what": "Si le disque est chiffré, la clé de récupération à 48 chiffres est copiée dans le coffre du kit, sur une clé USB amovible uniquement, jamais sur le disque qu'elle déverrouille. Si le kit tourne depuis une partition interne ou un disque fixe, la clé n'est pas exportée et le journal l'annonce : les 48 chiffres resteraient à demeure à côté du disque qu'ils ouvrent. Sans cette clé, un PC chiffré qui ne démarre plus est irrécupérable.",
       "protects": "La clé écrite en clair ouvre le disque : elle ne part que sur un support amovible, jamais sur le disque chiffré ni sur une partition interne. Conservez la clé USB comme un trousseau.",
@@ -233,12 +259,22 @@
     },
     "option.dryrun": {
       "title": "Simulation",
+      "badges": { "reversible": "readonly", "data": "untouched" },
       "short": "Exécute tout le déroulé sans rien modifier. À utiliser avant tout passage réel.",
       "what": "En simulation, chaque étape décrit dans le journal ce qu'elle ferait, sans rien modifier sur la machine. Décochée, l'intervention est réelle : les actions sont appliquées. Le titre de la fenêtre porte le préfixe [SIMULATION] ou [INTERVENTION RÉELLE] pendant toute l'intervention.",
       "protects": "Aucune écriture sur la machine, quelle que soit l'étape cochée.",
       "reversible": "Sans objet, rien n'est modifié.",
       "duration": "3 à 5 minutes pour le déroulé complet",
       "whenNot": "Jamais avant une première intervention sur une machine inconnue, ni avant une démonstration."
+    },
+    "status.backupnet": {
+      "title": "Filet de sauvegarde des données",
+      "short": "Indique si les dossiers personnels seront copiés avant l'intervention, et vers quel disque.",
+      "what": "Le point de restauration Windows ne protège pas les fichiers personnels : seul un disque externe branché permet d'en garder une copie qui survivrait à une panne pendant l'intervention. Cet indicateur se met à jour à l'ouverture du cockpit, quand la fenêtre reprend le focus et quand les cases de sauvegarde changent. Il passe à l'orange si aucun support externe n'est détecté ou si la sauvegarde est décochée.",
+      "protects": "La copie est purement additive : rien n'est déplacé ni supprimé des dossiers d'origine.",
+      "reversible": "Sans objet, il s'agit d'un indicateur.",
+      "duration": "Sans objet",
+      "whenNot": "Sans objet."
     },
     "debloat.conservative": {
       "title": "Politique de débloatage : Conservatrice",
@@ -251,10 +287,10 @@
     "debloat.standard": {
       "title": "Politique de débloatage : Standard",
       "short": "Retire les applications conditionnelles qui n'ont pas servi depuis 90 jours.",
-      "what": "L'usage récent est mesuré sur les fichiers de l'application. Une application utilisée ces trois derniers mois est conservée, les autres sont retirées.",
+      "what": "L'usage récent est mesuré sur les fichiers de l'application. Une application utilisée ces trois derniers mois est conservée. Depuis le cockpit, les autres sont retirées sans question posée : la liste ne compte que cinq groupes (Xbox, Spotify, Lien avec le téléphone, Skype, Films et TV), tous réinstallables gratuitement depuis le Microsoft Store. La confirmation avant lancement le rappelle.",
       "reversible": "Sans objet, il s'agit d'un réglage.",
       "duration": "Sans effet sur la durée",
-      "whenNot": "Sur la machine d'une personne qui utilise des applications de façon saisonnière."
+      "whenNot": "Sur la machine d'une personne qui utilise des applications de façon saisonnière : la politique conservatrice les garde toutes."
     },
     "debloat.aggressive": {
       "title": "Politique de débloatage : Agressive",
@@ -346,6 +382,7 @@
     },
     "action.delfiche": {
       "title": "Supprimer la fiche PC de la clé",
+      "badges": { "reversible": "no" },
       "short": "Efface le seul fichier contenant le mot de passe administrateur en clair.",
       "what": "Supprime runtime\\FICHE-PC-<machine>.txt de la clé. À faire avant de repartir d'une intervention, une fois le mot de passe transmis au propriétaire.",
       "protects": "Le mot de passe n'existe que dans ce fichier : le rapport ne le recopie pas.",

@@ -93,19 +93,10 @@ else {
 # ---------------------------------------------------------------------------
 Write-KitLog -Message "Recherche d'un disque externe pour le backup data..." -Level 'INFO'
 
-$externalVolumes = @(Get-Volume | Where-Object {
-    ($_.DriveType -eq 'Removable' -or $_.DriveType -eq 'Fixed') -and
-    $_.DriveLetter -and
-    $_.DriveLetter -ne 'C'
-} | Where-Object {
-    # Exclure le disque système : vérifier que ce n'est pas une partition système
-    $_.DriveType -eq 'Removable' -or (
-        $_.DriveType -eq 'Fixed' -and
-        -not (Test-Path "$($_.DriveLetter):\Windows\System32")
-    )
-} | Sort-Object @{ Expression = { if ($_.DriveType -eq 'Removable') { 0 } else { 1 } } }, 'DriveLetter')
+$externalVolumes = @(Get-KitExternalBackupVolumes)
 # Tri : un disque amovible (clé USB) passe avant une partition fixe (D: interne)
 # pour ne pas écrire le backup sur le même disque physique que les données.
+# Détection partagée avec le cockpit (indicateur de filet) : lib/Common.ps1.
 
 if ($externalVolumes.Count -eq 0) {
     Write-KitLog -Message "Pas de disque externe détecté. Backup data ignoré (non bloquant)." -Level 'WARN'

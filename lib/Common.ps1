@@ -614,6 +614,48 @@ function Get-BackupSourceFolders {
 }
 
 # ---------------------------------------------------------------------------
+# Select-KitBackupCandidates : filtre et trie les volumes candidats au backup
+# data. PURE (volumes et lettres à écarter passés en paramètres). Tri :
+# amovible d'abord, puis lettre - le backup vise une clé ou un disque USB,
+# jamais le disque physique qui porte les données. DriveLetter est un [char]
+# (Get-Volume) : les comparaisons passent par "$(...)" des deux côtés.
+# ---------------------------------------------------------------------------
+function Select-KitBackupCandidates {
+    [CmdletBinding()]
+    param(
+        [AllowEmptyCollection()][object[]]$Volumes = @(),
+        [string]$SystemDriveLetter = $env:SystemDrive.TrimEnd(':'),
+        [AllowEmptyCollection()][string[]]$SystemPathLetters = @()
+    )
+    $out = @($Volumes | Where-Object {
+        ($_.DriveType -eq 'Removable' -or $_.DriveType -eq 'Fixed') -and
+        $_.DriveLetter -and
+        "$($_.DriveLetter)" -ne $SystemDriveLetter
+    } | Where-Object {
+        $_.DriveType -eq 'Removable' -or ("$($_.DriveLetter)" -notin $SystemPathLetters)
+    } | Sort-Object @{ Expression = { if ($_.DriveType -eq 'Removable') { 0 } else { 1 } } }, 'DriveLetter')
+    # Contrat d'appel : envelopper avec @() côté appelant (même règle que
+    # Get-BackupSourceFolders ci-dessus). Pas de ,@($out) : l'appelant collecterait
+    # le tableau interne comme unique élément au lieu des N volumes.
+    return $out
+}
+
+# Get-KitExternalBackupVolumes : wrapper fin autour de Get-Volume. Les lettres
+# portant un \Windows\System32 sont écartées comme partitions système. Seuls les
+# volumes fixes sont sondés : la liste ne sert qu'à écarter des candidats fixes
+# (les amovibles passent outre), et un Test-Path sur un lecteur optique ou une
+# clé absente coûte une attente sur le thread UI pour un résultat jamais lu.
+function Get-KitExternalBackupVolumes {
+    [CmdletBinding()]
+    param()
+    $vols = @(Get-Volume -ErrorAction SilentlyContinue)
+    $sysLetters = @($vols | Where-Object { $_.DriveLetter -and $_.DriveType -eq 'Fixed' } |
+                    Where-Object { Test-Path "$($_.DriveLetter):\Windows\System32" } |
+                    ForEach-Object { "$($_.DriveLetter)" })
+    return (Select-KitBackupCandidates -Volumes $vols -SystemPathLetters $sysLetters)
+}
+
+# ---------------------------------------------------------------------------
 # Test-WingetRetryableExitCode : $true si le code de sortie winget est
 # 0x8A150042 (prompt interactif détecté), qui justifie un retry silencieux.
 # $LASTEXITCODE est un Int32 : le littéral 0x8A150042 déborde en Int64
